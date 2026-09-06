@@ -1,0 +1,12 @@
+MZJ Haraj Manager v1.1.0
+========================
+Deployment: GitHub Private -> Vercel
+Backend storage/auth: Firebase Authentication + Cloud Firestore (Spark)
+Stock proxy: Vercel /api/stock
+Firebase Functions: NONE
+Firebase Hosting: NONE
+Admin: admin@mzj.com
+Stock source: MZJ Platform / Operations / Vehicles
+Stock filter: available_for_sale (متاح للبيع)
+Fields: car_name + statement + model_year + status
+Platform source is read-only reference and is not modified.
