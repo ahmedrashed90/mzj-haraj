@@ -1,12 +1,13 @@
-MZJ Haraj Manager v1.1.0
-========================
-Deployment: GitHub Private -> Vercel
-Backend storage/auth: Firebase Authentication + Cloud Firestore (Spark)
-Stock proxy: Vercel /api/stock
-Firebase Functions: NONE
-Firebase Hosting: NONE
-Admin: admin@mzj.com
-Stock source: MZJ Platform / Operations / Vehicles
-Stock filter: available_for_sale (متاح للبيع)
-Fields: car_name + statement + model_year + status
-Platform source is read-only reference and is not modified.
+MZJ Haraj Manager v1.3.0
+
+- Vercel + GitHub + Firebase Spark only
+- Firebase Auth: admin@mzj.com only
+- Firestore: Haraj accounts, agents, weekly assignments, links and statuses
+- MZJ stock source: read-only through /api/stock
+- Stock filter: available_for_sale / متاح للبيع
+- Stock identity: car_name + statement + model_year
+- Weekly publishing schedule with automatic day/account/agent distribution
+- Company-wide agent distribution (no branch/account quota per agent)
+- Flexible Haraj account limits; lowering a limit never blocks or deletes existing tasks
+- Coverage cycles: no vehicle group repeats until all current available stock groups have been scheduled
+- Tajawal font and refreshed professional RTL UI

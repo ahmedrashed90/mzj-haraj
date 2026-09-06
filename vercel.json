@@ -5,6 +5,7 @@
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/inventory", "destination": "/index.html" },
+    { "source": "/schedule", "destination": "/index.html" },
     { "source": "/ads", "destination": "/index.html" },
     { "source": "/distribution", "destination": "/index.html" },
     { "source": "/accounts", "destination": "/index.html" },

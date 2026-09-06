@@ -1,53 +1,69 @@
-import { ArrowSquareOut, ArrowClockwise } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowSquareOut, CalendarBlank } from "@phosphor-icons/react";
 import { useMemo } from "react";
 import { useAppData } from "../AppDataContext";
+import {
+  dateKey,
+  formatDateArabic,
+  formatWeekRange,
+  getCoverageState,
+  getWeekStartKey,
+  isOverdue,
+  isPublished,
+} from "../schedule";
 import { AD_STATUS_LABELS } from "../types";
 import { EmptyState, PageTitle, Progress, StatCard } from "../components/Ui";
 
 export function DashboardPage() {
   const { accounts, agents, ads, stock, stockTotalVehicles, stockError, stockLoading, stockFetchedAt, refreshStock, dataError } = useAppData();
-  const activeAds = ads.filter((ad) => ad.status !== "closed");
-  const totalCapacity = accounts.filter((a) => a.active).reduce((sum, a) => sum + Number(a.adLimit || 0), 0);
-  const remaining = Math.max(0, totalCapacity - activeAds.length);
-  const coveredKeys = new Set(activeAds.map((ad) => ad.vehicleKey));
-  const coveredGroups = stock.filter((row) => coveredKeys.has(row.key)).length;
-  const uncoveredGroups = Math.max(0, stock.length - coveredGroups);
-  const withoutUrl = activeAds.filter((ad) => !String(ad.url || "").trim()).length;
+  const currentWeek = getWeekStartKey();
+  const today = dateKey(new Date());
+  const weekAds = useMemo(() => ads.filter((ad) => ad.weekStart === currentWeek && ad.status !== "closed"), [ads, currentWeek]);
+  const totalCapacity = accounts.filter((account) => account.active).reduce((sum, account) => sum + Number(account.adLimit || 0), 0);
+  const remaining = Math.max(0, totalCapacity - weekAds.length);
+  const coverage = useMemo(() => getCoverageState(stock, ads), [stock, ads]);
+  const published = weekAds.filter(isPublished).length;
+  const pending = weekAds.filter((ad) => !isPublished(ad)).length;
+  const overdue = weekAds.filter((ad) => isOverdue(ad, today)).length;
+  const withoutUrl = weekAds.filter((ad) => !String(ad.url || "").trim()).length;
+  const todayAds = weekAds.filter((ad) => ad.scheduledDate === today);
 
   const accountUsage = useMemo(() => accounts.map((account) => ({
     account,
-    used: activeAds.filter((ad) => ad.accountId === account.id).length,
-    agents: agents.filter((agent) => agent.accountId === account.id && agent.active).length,
-  })), [accounts, agents, activeAds]);
+    used: weekAds.filter((ad) => ad.accountId === account.id).length,
+  })), [accounts, weekAds]);
 
-  const recentAds = activeAds.slice(0, 8);
-  const accountById = new Map(accounts.map((a) => [a.id, a]));
-  const agentById = new Map(agents.map((a) => [a.id, a]));
+  const recentAds = useMemo(() => [...ads].sort((a, b) => String(b.updatedAt || b.assignedAt || "").localeCompare(String(a.updatedAt || a.assignedAt || ""))).slice(0, 8), [ads]);
+  const accountById = new Map(accounts.map((account) => [account.id, account]));
+  const agentById = new Map(agents.map((agent) => [agent.id, agent]));
 
   return <>
-    <PageTitle title="لوحة التحكم" subtitle="الأرقام هنا من Firebase والاستوك الحقيقي فقط؛ لا توجد بيانات تجريبية." actions={<button className="secondary-button" onClick={() => void refreshStock()} disabled={stockLoading}><ArrowClockwise size={18} />{stockLoading ? "جارٍ التحديث" : "تحديث الاستوك"}</button>} />
+    <PageTitle
+      title="لوحة التحكم"
+      subtitle={`متابعة أسبوع النشر الحالي ${formatWeekRange(currentWeek)} وتغطية الاستوك الحقيقي.`}
+      actions={<button className="secondary-button" onClick={() => void refreshStock()} disabled={stockLoading}><ArrowClockwise size={18} />{stockLoading ? "جارٍ التحديث" : "تحديث الاستوك"}</button>}
+    />
     {dataError ? <div className="alert error">{dataError}</div> : null}
     {stockError ? <div className="alert warning"><strong>الاستوك غير متصل:</strong> {stockError}</div> : null}
 
-    <section className="stats-grid">
-      <StatCard label="حسابات حراج" value={accounts.length} hint="المضافة في النظام" tone="info" />
-      <StatCard label="سعة الإعلانات" value={totalCapacity} hint="مجموع حدود الحسابات" />
-      <StatCard label="الإعلانات المسندة" value={activeAds.length} hint="غير المنتهية" tone="good" />
-      <StatCard label="السعة المتبقية" value={remaining} hint="حسب الحدود المسجلة" tone={remaining > 0 ? "warn" : "default"} />
-      <StatCard label="المناديب" value={agents.filter((a) => a.active).length} hint="النشطون" />
-      <StatCard label="سيارات متاح للبيع" value={stockTotalVehicles} hint={`${stock.length} نوع/فئة`} tone="info" />
-      <StatCard label="تم تغطيتها بإعلان" value={coveredGroups} hint="نوع/فئة لها إعلان" tone="good" />
-      <StatCard label="لم يُعلن عنها" value={uncoveredGroups} hint="نوع/فئة بلا إعلان" tone={uncoveredGroups ? "warn" : "good"} />
-      <StatCard label="إعلانات بدون رابط" value={withoutUrl} hint="تحتاج إضافة رابط حراج" tone={withoutUrl ? "danger" : "good"} />
+    <section className="stats-grid dashboard-stats">
+      <StatCard label="سعة الأسبوع" value={totalCapacity} hint="مجموع حدود الحسابات الحالية" tone="info" />
+      <StatCard label="المجدول هذا الأسبوع" value={weekAds.length} hint={`متبقي ${remaining} من السعة`} tone="good" />
+      <StatCard label="تم النشر" value={published} hint="تكليفات لها رابط/حالة نشر" tone="good" />
+      <StatCard label="بانتظار النشر" value={pending} hint="لم يتم تنفيذها بعد" tone={pending ? "warn" : "good"} />
+      <StatCard label="متأخر" value={overdue} hint="موعد النشر عدى" tone={overdue ? "danger" : "good"} />
+      <StatCard label="المناديب" value={agents.filter((agent) => agent.active).length} hint="النشطون في الشركة" />
+      <StatCard label="سيارات متاح للبيع" value={stockTotalVehicles} hint={`${stock.length} سيارة/فئة`} tone="info" />
+      <StatCard label="متاح للتكليف" value={coverage.eligibleRows.length} hint={`دورة التغطية ${coverage.cycle}`} tone={coverage.eligibleRows.length ? "warn" : "good"} />
+      <StatCard label="بدون رابط" value={withoutUrl} hint="من تكليفات الأسبوع" tone={withoutUrl ? "danger" : "good"} />
     </section>
 
     <section className="dashboard-columns">
       <div className="panel">
-        <div className="panel-head"><div><h2>توزيع حسابات حراج</h2><p>الاستخدام الفعلي مقابل الحد الذي حددته.</p></div></div>
-        {!accountUsage.length ? <EmptyState title="لا توجد حسابات" text="أضف حسابات حراج من صفحة الحسابات والمناديب." /> : <div className="account-usage-list">
-          {accountUsage.map(({ account, used, agents: count }) => <div className="usage-card" key={account.id}>
-            <div className="usage-top"><div><strong>{account.name}</strong><span>{count} مندوب</span></div><b>{Math.max(0, account.adLimit - used)} متبقي</b></div>
-            <Progress value={used} max={account.adLimit} />
+        <div className="panel-head"><div><h2>حسابات حراج — الأسبوع الحالي</h2><p>الحدود مرنة وتستخدم لبناء التوزيع الأسبوعي.</p></div></div>
+        {!accountUsage.length ? <EmptyState title="لا توجد حسابات" text="أضف حسابات حراج أولًا." /> : <div className="account-usage-list">
+          {accountUsage.map(({ account, used }) => <div className={`usage-card ${used > Number(account.adLimit || 0) ? "over-limit" : ""}`} key={account.id}>
+            <div className="usage-top"><div><strong>{account.name}</strong><span>الحد الحالي: {account.adLimit}</span></div><b>{Math.max(0, Number(account.adLimit || 0) - used)} متبقي</b></div>
+            <Progress value={used} max={Math.max(Number(account.adLimit || 0), used || 1)} />
           </div>)}
         </div>}
       </div>
@@ -55,18 +71,35 @@ export function DashboardPage() {
       <div className="panel">
         <div className="panel-head"><div><h2>تغطية الاستوك</h2><p>{stockFetchedAt ? `آخر قراءة: ${new Date(stockFetchedAt).toLocaleString("ar-SA-u-nu-latn")}` : "لم تتم القراءة بعد"}</p></div></div>
         {!stock.length ? <EmptyState title="لا توجد بيانات استوك" text={stockError ? "راجع إعدادات ربط المنصة." : "جارٍ انتظار قراءة الاستوك الحقيقي."} /> : <>
-          <div className="coverage-big"><strong>{coveredGroups}</strong><span>من {stock.length} نوع/فئة</span></div>
-          <Progress value={coveredGroups} max={stock.length} />
-          <div className="coverage-caption"><span>معلن عنها: {coveredGroups}</span><span>لسه: {uncoveredGroups}</span></div>
+          <div className="coverage-big"><strong>{coverage.coveredCount}</strong><span>من {stock.length} سيارة/فئة في دورة التغطية {coverage.cycle}</span></div>
+          <Progress value={coverage.coveredCount} max={stock.length} />
+          <div className="coverage-caption"><span>تمت تغطيته: {coverage.coveredCount}</span><span>متبقي: {coverage.eligibleRows.length}</span></div>
         </>}
       </div>
     </section>
 
-    <section className="panel">
-      <div className="panel-head"><div><h2>آخر الإعلانات المسجلة</h2><p>اضغط فتح للوصول مباشرة إلى الإعلان الحقيقي على حراج.</p></div></div>
-      {!recentAds.length ? <EmptyState title="لا توجد إعلانات" text="اختَر سيارة من الاستوك وأنشئ لها تكليفًا أولًا." /> : <div className="table-scroll"><table><thead><tr><th>السيارة</th><th>البيان</th><th>موديل</th><th>الحساب</th><th>المندوب</th><th>الحالة</th><th>الرابط</th></tr></thead><tbody>
-        {recentAds.map((ad) => <tr key={ad.id}><td><strong>{ad.carName || "—"}</strong></td><td>{ad.statement || "—"}</td><td>{ad.modelYear || "—"}</td><td>{accountById.get(ad.accountId)?.name || "—"}</td><td>{agentById.get(ad.agentId)?.name || "—"}</td><td><span className={`status-pill ${ad.status}`}>{AD_STATUS_LABELS[ad.status]}</span></td><td>{ad.url ? <a className="link-button" href={ad.url} target="_blank" rel="noreferrer"><ArrowSquareOut size={17} />فتح</a> : <span className="muted">بدون رابط</span>}</td></tr>)}
-      </tbody></table></div>}
+    <section className="dashboard-columns dashboard-secondary">
+      <div className="panel">
+        <div className="panel-head"><div><h2><CalendarBlank size={20} /> مهام اليوم</h2><p>{formatDateArabic(today, { weekday: "long", day: "numeric", month: "long" })}</p></div></div>
+        {!todayAds.length ? <EmptyState title="لا توجد إعلانات اليوم" text="راجع جدول النشر الأسبوعي أو أنشئ خطة جديدة." /> : <div className="today-task-list">
+          {todayAds.map((ad) => <div className={`today-task ${isPublished(ad) ? "done" : ""}`} key={ad.id}>
+            <div><strong>{ad.carName}</strong><span>{ad.statement} · {ad.modelYear}</span></div>
+            <div><span>{agentById.get(ad.agentId)?.name || "مندوب محذوف"}</span><small>{accountById.get(ad.accountId)?.name || "حساب محذوف"}</small></div>
+            {ad.url ? <a className="link-button" href={ad.url} target="_blank" rel="noreferrer"><ArrowSquareOut size={16} />فتح</a> : <span className="status-pill assigned">بانتظار الرابط</span>}
+          </div>)}
+        </div>}
+      </div>
+
+      <div className="panel">
+        <div className="panel-head"><div><h2>آخر الإعلانات المسجلة</h2><p>آخر تحديثات التكليفات والروابط.</p></div></div>
+        {!recentAds.length ? <EmptyState title="لا توجد إعلانات" text="ابدأ من مخزون السيارات وأنشئ أول جدول أسبوعي." /> : <div className="compact-list">
+          {recentAds.map((ad) => <div className="compact-ad" key={ad.id}>
+            <div><strong>{ad.carName}</strong><span>{ad.statement} · {ad.modelYear}</span></div>
+            <span className={`status-pill ${ad.status}`}>{AD_STATUS_LABELS[ad.status]}</span>
+            {ad.url ? <a className="icon-button open-link" href={ad.url} target="_blank" rel="noreferrer"><ArrowSquareOut size={16} /></a> : <span className="muted">بدون رابط</span>}
+          </div>)}
+        </div>}
+      </div>
     </section>
   </>;
 }

@@ -9,7 +9,7 @@ if errorlevel 1 (
 )
 if not exist .git git init
 git add .
-git commit -m "MZJ Haraj Manager v1.1.0"
+git commit -m "MZJ Haraj Manager v1.3.0"
 git branch -M main
 echo.
 echo تم تجهيز Git محلياً.

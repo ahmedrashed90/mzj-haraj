@@ -42,7 +42,11 @@ export function subscribeAgents(cb: (rows: Agent[]) => void, onError?: (error: E
 
 export function subscribeAds(cb: (rows: HarajAd[]) => void, onError?: (error: Error) => void) {
   return onSnapshot(collection(db, "haraj_ads"), (snapshot) => {
-    const rows = snapshot.docs.map((item) => asClientDoc<HarajAd>(item)).sort((a, b) => String(b.updatedAt || b.assignedAt || "").localeCompare(String(a.updatedAt || a.assignedAt || "")));
+    const rows = snapshot.docs.map((item) => asClientDoc<HarajAd>(item)).sort((a, b) => {
+      const dateA = String(a.scheduledDate || a.updatedAt || a.assignedAt || "");
+      const dateB = String(b.scheduledDate || b.updatedAt || b.assignedAt || "");
+      return dateB.localeCompare(dateA);
+    });
     cb(rows);
   }, (error) => onError?.(error));
 }
@@ -71,33 +75,19 @@ export async function removeAgent(id: string) {
   return deleteDoc(doc(db, "agents", id));
 }
 
-export async function distributeAgentLimits(account: HarajAccount, agents: Agent[], ads: HarajAd[]) {
-  const active = agents.filter((agent) => agent.accountId === account.id && agent.active);
-  if (!active.length) return;
-  const liveAds = ads.filter((ad) => ad.status !== "closed" && ad.accountId === account.id);
-  const usedByAgent = new Map<string, number>();
-  liveAds.forEach((ad) => usedByAgent.set(ad.agentId, (usedByAgent.get(ad.agentId) || 0) + 1));
-  const usedTotal = [...usedByAgent.values()].reduce((sum, value) => sum + value, 0);
-  if (usedTotal > account.adLimit) throw new Error("الإعلانات المسندة حاليًا أكبر من حد الحساب.");
-
-  const quotas = new Map(active.map((agent) => [agent.id, usedByAgent.get(agent.id) || 0]));
-  let remaining = account.adLimit - usedTotal;
-  const ordered = [...active].sort((a, b) => (quotas.get(a.id) || 0) - (quotas.get(b.id) || 0) || a.name.localeCompare(b.name, "ar"));
-  let cursor = 0;
-  while (remaining > 0 && ordered.length) {
-    const agent = ordered[cursor % ordered.length];
-    quotas.set(agent.id, (quotas.get(agent.id) || 0) + 1);
-    remaining -= 1;
-    cursor += 1;
-  }
-
-  const batch = writeBatch(db);
-  active.forEach((agent) => batch.update(doc(db, "agents", agent.id), { adLimit: quotas.get(agent.id) || 0, updatedAt: serverTimestamp() }));
-  await batch.commit();
-}
-
 export async function addAd(input: Omit<HarajAd, "id" | "assignedAt" | "updatedAt">) {
   return addDoc(collection(db, "haraj_ads"), { ...input, assignedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+}
+
+export async function createWeeklyAssignments(assignments: Array<Omit<HarajAd, "id" | "assignedAt" | "updatedAt" | "publishedAt">>) {
+  if (!assignments.length) return;
+  if (assignments.length > 450) throw new Error("الحد الأقصى لإنشاء جدول واحد هو 450 تكليفًا.");
+  const batch = writeBatch(db);
+  assignments.forEach((assignment) => {
+    const ref = doc(collection(db, "haraj_ads"));
+    batch.set(ref, { ...assignment, assignedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  });
+  await batch.commit();
 }
 
 export async function updateAd(id: string, patch: Partial<HarajAd>) {

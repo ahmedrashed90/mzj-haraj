@@ -1,4 +1,5 @@
 import {
+  CalendarDots,
   CarProfile,
   ChartPieSlice,
   ClipboardText,
@@ -13,8 +14,9 @@ import { useAuth } from "../AuthContext";
 const links = [
   { to: "/", label: "لوحة التحكم", icon: ChartPieSlice },
   { to: "/inventory", label: "مخزون السيارات", icon: CarProfile },
+  { to: "/schedule", label: "جدول النشر", icon: CalendarDots },
+  { to: "/distribution", label: "توزيع الأسبوع", icon: ListChecks },
   { to: "/ads", label: "الإعلانات", icon: ClipboardText },
-  { to: "/distribution", label: "التوزيع", icon: ListChecks },
   { to: "/accounts", label: "الحسابات والمناديب", icon: UsersThree },
   { to: "/settings", label: "الإعدادات", icon: GearSix },
 ];
@@ -49,7 +51,7 @@ export function Layout() {
       </aside>
       <main className="main-area">
         <header className="topbar">
-          <div><strong>{import.meta.env.VITE_APP_NAME || "MZJ Haraj Manager"}</strong><span>إدارة الاستوك وتوزيع إعلانات حراج</span></div>
+          <div><strong>{import.meta.env.VITE_APP_NAME || "MZJ Haraj Manager"}</strong><span>تخطيط أسبوعي · تغطية الاستوك · مراجعة الإعلانات</span></div>
           <div className="topbar-badge">ADMIN ONLY</div>
         </header>
         <div className="content"><Outlet /></div>

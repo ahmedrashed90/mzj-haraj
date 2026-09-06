@@ -12,9 +12,10 @@ export type Agent = {
   id: string;
   name: string;
   phone: string;
-  accountId: string;
-  adLimit: number;
   active: boolean;
+  // Legacy fields are kept optional so old Firestore records remain readable.
+  accountId?: string;
+  adLimit?: number;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -33,6 +34,11 @@ export type HarajAd = {
   status: AdStatus;
   url?: string;
   notes?: string;
+  weekStart?: string;
+  scheduledDate?: string;
+  coverageCycle?: number;
+  planId?: string;
+  scheduleOrder?: number;
   assignedAt?: string;
   publishedAt?: string;
   updatedAt?: string;
@@ -58,7 +64,7 @@ export type StockResponse = {
 };
 
 export const AD_STATUS_LABELS: Record<AdStatus, string> = {
-  assigned: "مسند",
+  assigned: "مجدول",
   published: "تم النشر",
   approved: "معتمد",
   needs_fix: "يحتاج تعديل",
