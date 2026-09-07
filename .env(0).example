@@ -1,0 +1,6 @@
+# لا توجد قيم Firebase مطلوبة في Vercel Frontend؛ إعداد Firebase Web App موجود داخل src/firebase.ts.
+# القيم التالية SERVER-ONLY وتضاف في Vercel > Project Settings > Environment Variables.
+
+MZJ_PLATFORM_BASE_URL=https://mzj-platform.vercel.app
+MZJ_PLATFORM_IDENTIFIER=
+MZJ_PLATFORM_PASSWORD=
