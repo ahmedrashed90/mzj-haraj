@@ -1,9 +1,0 @@
-MZJ Haraj Manager v1.4.1
-- Branch-based Haraj scheduling: account limit -> agents of the same branch only.
-- Saturday-Friday publishing week.
-- Initial/current short plan defaults from tomorrow through Friday.
-- Friday defaults next plan to Saturday through Friday using the latest branch limits.
-- Stock coverage prevents repeating a vehicle before uncovered stock is exhausted.
-- Branch schedule has an A4 branded print view for Save as PDF, including policies and response/restriction reminders.
-- MZJ visual identity and Tajawal UI refresh.
-- api/stock.ts remains read-only and unchanged.

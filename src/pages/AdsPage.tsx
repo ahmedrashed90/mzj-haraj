@@ -65,13 +65,13 @@ export function AdsPage() {
       <label className="search-box"><MagnifyingGlass size={19} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="بحث بالسيارة أو المندوب" /></label>
       <select value={weekFilter} onChange={(e) => setWeekFilter(e.target.value as typeof weekFilter)}><option value="all">كل الأسابيع</option><option value="current">الأسبوع الحالي</option><option value="legacy">تكليفات قديمة بدون أسبوع</option></select>
       <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)}><option value="all">كل الحالات</option>{statuses.map((item) => <option key={item} value={item}>{AD_STATUS_LABELS[item]}</option>)}</select>
-      <select value={accountId} onChange={(e) => setAccountId(e.target.value)}><option value="all">كل الحسابات</option>{accounts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
+      <select value={accountId} onChange={(e) => setAccountId(e.target.value)}><option value="all">كل الفروع</option>{accounts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
       <select value={agentId} onChange={(e) => setAgentId(e.target.value)}><option value="all">كل المناديب</option>{agents.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
       <select value={urlFilter} onChange={(e) => setUrlFilter(e.target.value as typeof urlFilter)}><option value="all">كل الروابط</option><option value="with">برابط</option><option value="without">بدون رابط</option></select>
     </div>
 
     <section className="panel table-panel">
-      {!rows.length ? <EmptyState title="لا توجد إعلانات" text="اختَر السيارات من مخزون السيارات وأنشئ جدول نشر أسبوعيًا." /> : <div className="table-scroll"><table className="ads-table"><thead><tr><th>موعد النشر</th><th>السيارة</th><th>البيان</th><th>موديل</th><th>الحساب</th><th>المندوب</th><th>الحالة</th><th>الرابط والملاحظات</th><th></th></tr></thead><tbody>
+      {!rows.length ? <EmptyState title="لا توجد إعلانات" text="اختَر السيارات من مخزون السيارات وأنشئ جدول نشر أسبوعيًا." /> : <div className="table-scroll"><table className="ads-table"><thead><tr><th>موعد النشر</th><th>السيارة</th><th>البيان</th><th>موديل</th><th>الفرع</th><th>المندوب</th><th>الحالة</th><th>الرابط والملاحظات</th><th></th></tr></thead><tbody>
         {rows.map((ad) => {
           const late = isOverdue(ad);
           return <tr key={ad.id} className={late ? "late-row" : ""}>

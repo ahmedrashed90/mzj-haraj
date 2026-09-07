@@ -13,8 +13,9 @@ export type Agent = {
   name: string;
   phone: string;
   active: boolean;
-  // Legacy fields are kept optional so old Firestore records remain readable.
+  /** Branch/Haraj account that owns this representative. */
   accountId?: string;
+  // Legacy field kept optional so old Firestore records remain readable.
   adLimit?: number;
   createdAt?: string;
   updatedAt?: string;
@@ -34,7 +35,12 @@ export type HarajAd = {
   status: AdStatus;
   url?: string;
   notes?: string;
+  /** Saturday key that owns this publishing period. */
   weekStart?: string;
+  /** Actual first publishing day. Allows the initial short Tue -> Fri plan. */
+  planStart?: string;
+  /** Actual last publishing day. Normally Friday. */
+  planEnd?: string;
   scheduledDate?: string;
   coverageCycle?: number;
   planId?: string;

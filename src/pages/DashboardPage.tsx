@@ -4,7 +4,8 @@ import { useAppData } from "../AppDataContext";
 import {
   dateKey,
   formatDateArabic,
-  formatWeekRange,
+  formatPlanRange,
+  getPlanWindowFromAds,
   getCoverageState,
   getWeekStartKey,
   isOverdue,
@@ -18,6 +19,7 @@ export function DashboardPage() {
   const currentWeek = getWeekStartKey();
   const today = dateKey(new Date());
   const weekAds = useMemo(() => ads.filter((ad) => ad.weekStart === currentWeek && ad.status !== "closed"), [ads, currentWeek]);
+  const currentPlan = getPlanWindowFromAds(weekAds, currentWeek);
   const totalCapacity = accounts.filter((account) => account.active).reduce((sum, account) => sum + Number(account.adLimit || 0), 0);
   const remaining = Math.max(0, totalCapacity - weekAds.length);
   const coverage = useMemo(() => getCoverageState(stock, ads), [stock, ads]);
@@ -39,19 +41,19 @@ export function DashboardPage() {
   return <>
     <PageTitle
       title="لوحة التحكم"
-      subtitle={`متابعة أسبوع النشر الحالي ${formatWeekRange(currentWeek)} وتغطية الاستوك الحقيقي.`}
+      subtitle={`متابعة خطة النشر الحالية ${formatPlanRange(currentPlan.planStart, currentPlan.planEnd)} وتغطية الاستوك الحقيقي.`}
       actions={<button className="secondary-button" onClick={() => void refreshStock()} disabled={stockLoading}><ArrowClockwise size={18} />{stockLoading ? "جارٍ التحديث" : "تحديث الاستوك"}</button>}
     />
     {dataError ? <div className="alert error">{dataError}</div> : null}
     {stockError ? <div className="alert warning"><strong>الاستوك غير متصل:</strong> {stockError}</div> : null}
 
     <section className="stats-grid dashboard-stats">
-      <StatCard label="سعة الأسبوع" value={totalCapacity} hint="مجموع حدود الحسابات الحالية" tone="info" />
+      <StatCard label="سعة الفروع الحالية" value={totalCapacity} hint="مجموع حدود حسابات حراج" tone="info" />
       <StatCard label="المجدول هذا الأسبوع" value={weekAds.length} hint={`متبقي ${remaining} من السعة`} tone="good" />
       <StatCard label="تم النشر" value={published} hint="تكليفات لها رابط/حالة نشر" tone="good" />
       <StatCard label="بانتظار النشر" value={pending} hint="لم يتم تنفيذها بعد" tone={pending ? "warn" : "good"} />
       <StatCard label="متأخر" value={overdue} hint="موعد النشر عدى" tone={overdue ? "danger" : "good"} />
-      <StatCard label="المناديب" value={agents.filter((agent) => agent.active).length} hint="النشطون في الشركة" />
+      <StatCard label="المناديب" value={agents.filter((agent) => agent.active).length} hint="النشطون داخل فروعهم" />
       <StatCard label="سيارات متاح للبيع" value={stockTotalVehicles} hint={`${stock.length} سيارة/فئة`} tone="info" />
       <StatCard label="متاح للتكليف" value={coverage.eligibleRows.length} hint={`دورة التغطية ${coverage.cycle}`} tone={coverage.eligibleRows.length ? "warn" : "good"} />
       <StatCard label="بدون رابط" value={withoutUrl} hint="من تكليفات الأسبوع" tone={withoutUrl ? "danger" : "good"} />
@@ -59,7 +61,7 @@ export function DashboardPage() {
 
     <section className="dashboard-columns">
       <div className="panel">
-        <div className="panel-head"><div><h2>حسابات حراج — الأسبوع الحالي</h2><p>الحدود مرنة وتستخدم لبناء التوزيع الأسبوعي.</p></div></div>
+        <div className="panel-head"><div><h2>الفروع وحسابات حراج — الفترة الحالية</h2><p>الحدود مرنة وتستخدم لبناء التوزيع الأسبوعي.</p></div></div>
         {!accountUsage.length ? <EmptyState title="لا توجد حسابات" text="أضف حسابات حراج أولًا." /> : <div className="account-usage-list">
           {accountUsage.map(({ account, used }) => <div className={`usage-card ${used > Number(account.adLimit || 0) ? "over-limit" : ""}`} key={account.id}>
             <div className="usage-top"><div><strong>{account.name}</strong><span>الحد الحالي: {account.adLimit}</span></div><b>{Math.max(0, Number(account.adLimit || 0) - used)} متبقي</b></div>
