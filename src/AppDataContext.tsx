@@ -8,6 +8,7 @@ type AppDataState = {
   ads: HarajAd[];
   stock: StockGroup[];
   stockTotalVehicles: number;
+  stockExcludedAgencyVehicles: number;
   stockFetchedAt: string;
   stockLoading: boolean;
   stockError: string;
@@ -23,6 +24,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const [ads, setAds] = useState<HarajAd[]>([]);
   const [stock, setStock] = useState<StockGroup[]>([]);
   const [stockTotalVehicles, setStockTotalVehicles] = useState(0);
+  const [stockExcludedAgencyVehicles, setStockExcludedAgencyVehicles] = useState(0);
   const [stockFetchedAt, setStockFetchedAt] = useState("");
   const [stockLoading, setStockLoading] = useState(false);
   const [stockError, setStockError] = useState("");
@@ -43,11 +45,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       const payload = await fetchStock();
       setStock(payload.rows || []);
       setStockTotalVehicles(payload.totalVehicles || 0);
+      setStockExcludedAgencyVehicles(payload.excludedAgencyVehicles || 0);
       setStockFetchedAt(payload.fetchedAt || new Date().toISOString());
     } catch (error) {
       setStockError(error instanceof Error ? error.message : "تعذر قراءة الاستوك");
       setStock([]);
       setStockTotalVehicles(0);
+      setStockExcludedAgencyVehicles(0);
     } finally {
       setStockLoading(false);
     }
@@ -61,12 +65,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     ads,
     stock,
     stockTotalVehicles,
+    stockExcludedAgencyVehicles,
     stockFetchedAt,
     stockLoading,
     stockError,
     dataError,
     refreshStock,
-  }), [accounts, agents, ads, stock, stockTotalVehicles, stockFetchedAt, stockLoading, stockError, dataError]);
+  }), [accounts, agents, ads, stock, stockTotalVehicles, stockExcludedAgencyVehicles, stockFetchedAt, stockLoading, stockError, dataError]);
 
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }

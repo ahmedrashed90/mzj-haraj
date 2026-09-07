@@ -9,16 +9,18 @@ import {
   DownloadSimple,
   FloppyDisk,
   LinkSimple,
+  Trash,
   WarningCircle,
 } from "@phosphor-icons/react";
 import { useSearchParams } from "react-router-dom";
 import { useAppData } from "../AppDataContext";
-import { normalizeHarajUrl, updateAd } from "../data";
+import { normalizeHarajUrl, removeScheduleAds, updateAd } from "../data";
 import {
   addDaysKey,
   dateKey,
   formatDateArabic,
   formatPlanRange,
+  getAccountPlanCapacity,
   getPlanDays,
   getPlanWindowFromAds,
   getWeekStartKey,
@@ -26,7 +28,7 @@ import {
   isPublished,
 } from "../schedule";
 import { AD_STATUS_LABELS, type AdStatus, type HarajAd } from "../types";
-import { EmptyState, PageTitle, StatCard } from "../components/Ui";
+import { ConfirmButton, EmptyState, PageTitle, StatCard } from "../components/Ui";
 import { BranchSchedulePdf } from "../components/BranchSchedulePdf";
 
 const statuses: AdStatus[] = ["assigned", "published", "approved", "needs_fix", "closed"];
@@ -54,6 +56,9 @@ export function SchedulePage() {
   const { accounts, agents, ads } = useAppData();
   const [params, setParams] = useSearchParams();
   const [exporting, setExporting] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const requestedWeek = params.get("week") || getWeekStartKey();
   const weekStart = getWeekStartKey(requestedWeek);
   const today = dateKey(new Date());
@@ -65,6 +70,7 @@ export function SchedulePage() {
   ), [ads, weekStart]);
   const { planStart, planEnd } = getPlanWindowFromAds(weekAds, weekStart);
   const days = getPlanDays(planStart, planEnd);
+  const planDayCount = days.length;
 
   const published = weekAds.filter(isPublished).length;
   const pending = weekAds.filter((ad) => !isPublished(ad) && ad.status !== "closed").length;
@@ -75,15 +81,31 @@ export function SchedulePage() {
     account,
     rows: weekAds.filter((ad) => ad.accountId === account.id && ad.status !== "closed"),
     activeAgents: agents.filter((agent) => agent.accountId === account.id && agent.active).length,
-  })).filter((row) => row.rows.length > 0), [accounts, agents, weekAds]);
+    periodCapacity: getAccountPlanCapacity(account, planStart, planEnd),
+  })).filter((row) => row.rows.length > 0), [accounts, agents, weekAds, planStart, planEnd]);
 
   function goWeek(offset: number) {
     setParams({ week: addDaysKey(weekStart, offset * 7) });
+    setError(""); setNotice("");
   }
 
   function selectWeek(value: string) {
     if (!value) return;
     setParams({ week: getWeekStartKey(value) });
+    setError(""); setNotice("");
+  }
+
+  async function deleteWholeSchedule() {
+    if (!weekAds.length || deleting) return;
+    setDeleting(true); setError(""); setNotice("");
+    try {
+      await removeScheduleAds(weekAds.map((ad) => ad.id));
+      setNotice(`تم حذف جدول النشر بالكامل (${weekAds.length} تكليفًا). السيارات تعود للتغطية تلقائيًا إذا لم يكن لها تكليف آخر.`);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "تعذر حذف جدول النشر");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   function exportBranchPdf(accountId: string) {
@@ -109,33 +131,44 @@ export function SchedulePage() {
     const printStyle = popup.document.createElement("style");
     printStyle.textContent = `
       @page { size: A4 portrait; margin: 0; }
-      html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
-      .pdf-export-sheet { position: static !important; left: auto !important; top: auto !important; width: 794px !important; pointer-events: auto !important; z-index: auto !important; }
-      .pdf-page { page-break-after: always; break-after: page; }
-      .pdf-page:last-child { page-break-after: auto; break-after: auto; }
+      html, body { margin: 0 !important; padding: 0 !important; width: 210mm !important; background: #fff !important; }
+      body { overflow: visible !important; }
+      .pdf-export-sheet { position: static !important; inset: auto !important; left: auto !important; top: auto !important; width: 210mm !important; margin: 0 !important; pointer-events: auto !important; z-index: auto !important; }
+      .pdf-page { width: 210mm !important; height: 296mm !important; min-height: 0 !important; margin: 0 !important; box-sizing: border-box !important; overflow: hidden !important; page-break-after: auto !important; break-after: auto !important; page-break-before: auto !important; break-before: auto !important; }
+      .pdf-page + .pdf-page { page-break-before: always !important; break-before: page !important; }
     `;
     popup.document.head.appendChild(printStyle);
-    popup.document.body.innerHTML = root.innerHTML;
+    popup.document.body.innerHTML = root.outerHTML;
 
     const finish = () => {
       setExporting("");
       popup.focus();
       popup.print();
     };
-    if (popup.document.fonts?.ready) popup.document.fonts.ready.then(() => setTimeout(finish, 350));
-    else setTimeout(finish, 700);
+    if (popup.document.fonts?.ready) popup.document.fonts.ready.then(() => setTimeout(finish, 300));
+    else setTimeout(finish, 650);
   }
 
   return <>
     <PageTitle
       title="جدول النشر"
-      subtitle="الجدول موزع حسب حد كل فرع وعلى مناديب نفس الفرع. بعد النشر أضف رابط إعلان حراج."
-      actions={<div className="week-switcher"><button className="icon-button" onClick={() => goWeek(-1)} title="الأسبوع السابق"><ArrowRight size={19} /></button><label><CalendarBlank size={18} /><input type="date" value={weekStart} onChange={(e) => selectWeek(e.target.value)} /></label><button className="icon-button" onClick={() => goWeek(1)} title="الأسبوع التالي"><ArrowLeft size={19} /></button></div>}
+      subtitle="حد كل فرع هو حد يومي، ويتكرر في كل يوم من فترة الجدول. بعد النشر أضف رابط إعلان حراج."
+      actions={<div className="schedule-title-actions">
+        {weekAds.length ? <ConfirmButton
+          className="danger-button"
+          confirmText={`حذف جدول النشر بالكامل؟ سيتم حذف ${weekAds.length} تكليفًا من هذه الفترة، بما فيها أي روابط مسجلة داخلها.`}
+          onConfirm={deleteWholeSchedule}
+        ><Trash size={18} />{deleting ? "جارٍ الحذف..." : "حذف الجدول بالكامل"}</ConfirmButton> : null}
+        <div className="week-switcher"><button className="icon-button" onClick={() => goWeek(-1)} title="الأسبوع السابق"><ArrowRight size={19} /></button><label><CalendarBlank size={18} /><input type="date" value={weekStart} onChange={(e) => selectWeek(e.target.value)} /></label><button className="icon-button" onClick={() => goWeek(1)} title="الأسبوع التالي"><ArrowLeft size={19} /></button></div>
+      </div>}
     />
 
+    {error ? <div className="alert error"><WarningCircle size={19} />{error}</div> : null}
+    {notice ? <div className="alert success"><CheckCircle size={19} />{notice}</div> : null}
+
     <section className="week-hero panel">
-      <div><span>فترة النشر</span><h2>{formatPlanRange(planStart, planEnd)}</h2><p>{planStart === weekStart ? "الجدول الأسبوعي: السبت إلى الجمعة" : "جدول الفترة الحالية حتى الجمعة"}</p></div>
-      <div className="week-hero-stats"><div><span>المجدول</span><b>{weekAds.length}</b></div><div><span>تم النشر</span><b>{published}</b></div><div><span>متبقي</span><b>{pending}</b></div><div className={overdue ? "danger" : ""}><span>متأخر</span><b>{overdue}</b></div></div>
+      <div><span>فترة النشر</span><h2>{formatPlanRange(planStart, planEnd)}</h2><p>{planStart === weekStart ? "الجدول الأسبوعي: السبت إلى الجمعة" : "جدول الفترة الاستثنائية حتى الجمعة"}</p></div>
+      <div className="week-hero-stats"><div><span>أيام النشر</span><b>{planDayCount}</b></div><div><span>المجدول</span><b>{weekAds.length}</b></div><div><span>تم النشر</span><b>{published}</b></div><div className={overdue ? "danger" : ""}><span>متأخر</span><b>{overdue}</b></div></div>
     </section>
 
     <section className="stats-grid schedule-stats">
@@ -147,17 +180,17 @@ export function SchedulePage() {
     </section>
 
     {byAccount.length ? <section className="panel branch-share-panel">
-      <div className="panel-head"><div><h2>إرسال جدول كل فرع</h2><p>حمّل PDF خاص بالفرع وأرسله لمدير الفرع. الملف يحتوي الجدول وسياسات النشر ومتابعة الرسائل والتنبيهات.</p></div></div>
-      <div className="branch-export-grid">{byAccount.map(({ account, rows, activeAgents }) => <article className="branch-export-card" key={account.id}>
+      <div className="panel-head"><div><h2>إرسال جدول كل فرع</h2><p>حمّل PDF خاص بالفرع وأرسله لمدير الفرع. الملف يحتوي الجدول وسياسات النشر ومتابعة الرسائل والتعليقات والقيود.</p></div></div>
+      <div className="branch-export-grid">{byAccount.map(({ account, rows, activeAgents, periodCapacity }) => <article className="branch-export-card" key={account.id}>
         <div><span>الفرع</span><strong>{account.name}</strong><small>{activeAgents} مندوب نشط</small></div>
-        <div className="branch-export-numbers"><span>حد حراج <b>{account.adLimit}</b></span><span>في الجدول <b>{rows.length}</b></span></div>
+        <div className="branch-export-numbers"><span>الحد اليومي <b>{account.adLimit}</b></span><span>حد الفترة <b>{periodCapacity}</b></span><span>في الجدول <b>{rows.length}</b></span></div>
         <button className="primary-button" onClick={() => void exportBranchPdf(account.id)} disabled={exporting === account.id}><DownloadSimple size={18} />{exporting === account.id ? "جارٍ تجهيز PDF..." : "حفظ PDF للفرع"}</button>
       </article>)}</div>
     </section> : null}
 
-    {byAccount.some((row) => row.rows.length > row.account.adLimit) ? <div className="alert warning"><WarningCircle size={19} />يوجد فرع حدّه الحالي أقل من عدد التكليفات الموجودة. هذا تنبيه فقط ولا يتم حذف أي تكليف سابق.</div> : null}
+    {byAccount.some((row) => row.rows.length > row.periodCapacity) ? <div className="alert warning"><WarningCircle size={19} />يوجد فرع عدد تكليفاته أعلى من الحد اليومي × عدد أيام الفترة. هذا تنبيه فقط ولا يتم حذف أي سجل تلقائيًا.</div> : null}
 
-    {!weekAds.length ? <section className="panel"><EmptyState title="لا يوجد جدول لهذه الفترة" text="من صفحة مخزون السيارات اختر السيارات ثم اضغط تجهيز جدول النشر." /></section> : <section className="weekly-board">
+    {!weekAds.length ? <section className="panel"><EmptyState title="لا يوجد جدول لهذه الفترة" text="من صفحة مخزون السيارات اضغط تجهيز جدول النشر." /></section> : <section className="weekly-board">
       {days.map((day) => {
         const dayAds = weekAds.filter((ad) => ad.scheduledDate === day.key);
         const isToday = day.key === today;

@@ -17,7 +17,6 @@ export function parseDateKey(value: string) {
   return new Date(year, month - 1, day, 12, 0, 0, 0);
 }
 
-/** Returns the Saturday that owns the supplied MZJ publishing week. */
 export function getWeekStartKey(value: Date | string = new Date()) {
   const date = typeof value === "string" ? parseDateKey(value) : new Date(value);
   date.setHours(12, 0, 0, 0);
@@ -61,13 +60,9 @@ export function getPlanDays(planStart: string, planEnd: string) {
 }
 
 /**
- * Publishing-window rule requested by MZJ:
- * - On Friday: prepare the NEXT full week, Saturday -> Friday.
- * - On any other day: prepare from TOMORROW -> the coming Friday.
- *
- * Example:
- * 2026-09-07 (Monday) => 2026-09-08 .. 2026-09-11.
- * 2026-09-11 (Friday) => 2026-09-12 .. 2026-09-18.
+ * MZJ publishing-window rule:
+ * - Friday: prepare the next full Saturday -> Friday schedule.
+ * - Any other day: prepare from tomorrow -> the coming Friday.
  */
 export function getSuggestedPlanWindow(value: Date | string = new Date()) {
   const today = typeof value === "string" ? parseDateKey(value) : new Date(value);
@@ -125,12 +120,6 @@ export function currentCoverageCycle(ads: HarajAd[]) {
   return Math.max(1, ...relevant.map(getCoverageCycle));
 }
 
-/**
- * A vehicle disappears from the selectable list as soon as it enters a live plan.
- * A cancelled/closed task with no published URL does not count as coverage and the
- * vehicle becomes selectable again. A new cycle starts only after every current
- * stock group has been covered once.
- */
 export function getCoverageState(stock: StockGroup[], ads: HarajAd[]) {
   const relevantAds = ads.filter(countsForCoverage);
   const currentCycle = currentCoverageCycle(relevantAds);
@@ -178,36 +167,46 @@ export function isAgentAvailable(agent: Agent) {
   return Boolean(agent.active);
 }
 
-export type WeeklyAssignmentDraft = Omit<HarajAd, "id" | "assignedAt" | "updatedAt" | "publishedAt">;
-
-type BuildWeeklyAssignmentsInput = {
-  vehicles: StockGroup[];
-  planStart: string;
-  planEnd: string;
-  coverageCycle: number;
-  accounts: HarajAccount[];
-  agents: Agent[];
-  existingAds: HarajAd[];
-};
+export type PublishingAssignmentDraft = Omit<HarajAd, "id" | "assignedAt" | "updatedAt" | "publishedAt">;
 
 export function getWeekAds(ads: HarajAd[], weekStart: string) {
   return ads.filter((ad) => ad.weekStart === weekStart && ad.status !== "closed");
 }
 
-export function getAccountWeeklyUsage(ads: HarajAd[], accountId: string, weekStart: string) {
-  return getWeekAds(ads, weekStart).filter((ad) => ad.accountId === accountId).length;
+export function getPlanAds(ads: HarajAd[], planStart: string, planEnd: string) {
+  return ads.filter((ad) => (
+    ad.status !== "closed" &&
+    Boolean(ad.scheduledDate) &&
+    String(ad.scheduledDate) >= planStart &&
+    String(ad.scheduledDate) <= planEnd
+  ));
 }
 
-export function getAgentWeeklyUsage(ads: HarajAd[], agentId: string, weekStart: string) {
-  return getWeekAds(ads, weekStart).filter((ad) => ad.agentId === agentId).length;
+export function getAccountDailyUsage(ads: HarajAd[], accountId: string, dayKey: string) {
+  return ads.filter((ad) => ad.status !== "closed" && ad.accountId === accountId && ad.scheduledDate === dayKey).length;
 }
 
-export function getWeekRemainingCapacity(accounts: HarajAccount[], ads: HarajAd[], weekStart: string) {
+export function getAccountPlanUsage(ads: HarajAd[], accountId: string, planStart: string, planEnd: string) {
+  return getPlanAds(ads, planStart, planEnd).filter((ad) => ad.accountId === accountId).length;
+}
+
+export function getAccountPlanCapacity(account: HarajAccount, planStart: string, planEnd: string) {
+  return Math.max(0, Number(account.adLimit || 0)) * getPlanDays(planStart, planEnd).length;
+}
+
+export function getPlanTotalCapacity(accounts: HarajAccount[], planStart: string, planEnd: string) {
+  return accounts
+    .filter((account) => account.active)
+    .reduce((sum, account) => sum + getAccountPlanCapacity(account, planStart, planEnd), 0);
+}
+
+export function getPlanRemainingCapacity(accounts: HarajAccount[], ads: HarajAd[], planStart: string, planEnd: string) {
   return accounts
     .filter((account) => account.active)
     .reduce((sum, account) => {
-      const used = getAccountWeeklyUsage(ads, account.id, weekStart);
-      return sum + Math.max(0, Number(account.adLimit || 0) - used);
+      const capacity = getAccountPlanCapacity(account, planStart, planEnd);
+      const used = getAccountPlanUsage(ads, account.id, planStart, planEnd);
+      return sum + Math.max(0, capacity - used);
     }, 0);
 }
 
@@ -221,42 +220,61 @@ export function getPlanWindowFromAds(weekAds: HarajAd[], weekStart: string) {
   };
 }
 
-function buildAccountSlots(
+type BuildPublishingAssignmentsInput = {
+  vehicles: StockGroup[];
+  planStart: string;
+  planEnd: string;
+  coverageCycle: number;
+  accounts: HarajAccount[];
+  agents: Agent[];
+  existingAds: HarajAd[];
+};
+
+type BranchDaySlot = {
+  account: HarajAccount;
+  day: { name: string; key: string; index: number };
+  slotIndex: number;
+};
+
+function buildBranchDaySlots(
   accounts: HarajAccount[],
-  existingCounts: Map<string, number>,
+  days: Array<{ name: string; key: string; index: number }>,
+  existingAds: HarajAd[],
   requested: number,
 ) {
-  const assignedCounts = new Map<string, number>();
-  const slots: HarajAccount[] = [];
+  const remainingByPair = new Map<string, number>();
+  let maxRemaining = 0;
 
-  while (slots.length < requested) {
-    const candidates = accounts
-      .map((account) => {
-        const limit = Number(account.adLimit || 0);
-        const existing = existingCounts.get(account.id) || 0;
-        const assigned = assignedCounts.get(account.id) || 0;
-        const total = existing + assigned;
-        return { account, limit, total, remaining: Math.max(0, limit - total), ratio: limit > 0 ? total / limit : 1 };
-      })
-      .filter((item) => item.remaining > 0)
-      .sort((a, b) => a.ratio - b.ratio || a.total - b.total || a.account.name.localeCompare(b.account.name, "ar"));
+  days.forEach((day) => {
+    accounts.forEach((account) => {
+      const dailyLimit = Math.max(0, Number(account.adLimit || 0));
+      const used = getAccountDailyUsage(existingAds, account.id, day.key);
+      const remaining = Math.max(0, dailyLimit - used);
+      remainingByPair.set(`${account.id}:${day.key}`, remaining);
+      maxRemaining = Math.max(maxRemaining, remaining);
+    });
+  });
 
-    const chosen = candidates[0];
-    if (!chosen) break;
-    slots.push(chosen.account);
-    assignedCounts.set(chosen.account.id, (assignedCounts.get(chosen.account.id) || 0) + 1);
+  const slots: BranchDaySlot[] = [];
+  for (let round = 0; round < maxRemaining && slots.length < requested; round += 1) {
+    for (const day of days) {
+      for (const account of accounts) {
+        const remaining = remainingByPair.get(`${account.id}:${day.key}`) || 0;
+        if (round >= remaining) continue;
+        slots.push({ account, day, slotIndex: round });
+        if (slots.length >= requested) return slots;
+      }
+    }
   }
-
   return slots;
 }
 
 /**
- * Builds a clean weekly publishing draft.
- * Branch capacity controls HOW MANY ads each branch receives.
- * Only active representatives of that SAME branch can receive its tasks.
- * Representative load and publishing days are balanced automatically.
+ * Creates the publishing draft from DAILY branch limits.
+ * Example: a branch limit of 10 for a 4-day plan produces up to 40 tasks.
+ * Every branch task stays inside the same branch and only active branch reps are used.
  */
-export function buildWeeklyAssignments({
+export function buildPublishingAssignments({
   vehicles,
   planStart,
   planEnd,
@@ -264,7 +282,7 @@ export function buildWeeklyAssignments({
   accounts,
   agents,
   existingAds,
-}: BuildWeeklyAssignmentsInput) {
+}: BuildPublishingAssignmentsInput) {
   const weekStart = getWeekStartKey(planStart);
   const days = getPlanDays(planStart, planEnd);
   if (!days.length) throw new Error("فترة جدول النشر غير صحيحة.");
@@ -274,114 +292,76 @@ export function buildWeeklyAssignments({
     .sort((a, b) => a.name.localeCompare(b.name, "ar"));
   const activeAgents = agents.filter(isAgentAvailable).sort((a, b) => a.name.localeCompare(b.name, "ar"));
 
-  if (!activeAccounts.length) throw new Error("لا يوجد فرع/حساب حراج نشط بحد إعلانات أكبر من صفر.");
+  if (!activeAccounts.length) throw new Error("لا يوجد فرع/حساب حراج نشط بحد يومي أكبر من صفر.");
   if (!activeAgents.length) throw new Error("لا يوجد مندوب نشط.");
   if (!vehicles.length) throw new Error("اختر سيارة واحدة على الأقل.");
 
-  const weekAds = getWeekAds(existingAds, weekStart);
-  const accountCounts = new Map<string, number>();
+  const periodAds = getPlanAds(existingAds, planStart, planEnd);
   const accountAgents = new Map<string, Agent[]>();
-
   activeAccounts.forEach((account) => {
-    accountCounts.set(account.id, weekAds.filter((ad) => ad.accountId === account.id).length);
     accountAgents.set(account.id, activeAgents.filter((agent) => agent.accountId === account.id));
   });
 
   const branchesWithoutAgents = activeAccounts.filter((account) => {
-    const remaining = Math.max(0, Number(account.adLimit || 0) - (accountCounts.get(account.id) || 0));
+    const remaining = getAccountPlanCapacity(account, planStart, planEnd) - getAccountPlanUsage(existingAds, account.id, planStart, planEnd);
     return remaining > 0 && !(accountAgents.get(account.id) || []).length;
   });
   if (branchesWithoutAgents.length) {
-    throw new Error(
-      `يوجد حد نشر متاح بدون مندوب نشط داخل نفس الفرع: ${branchesWithoutAgents.map((item) => item.name).join("، ")}.`,
-    );
+    throw new Error(`يوجد حد نشر يومي بدون مندوب نشط داخل نفس الفرع: ${branchesWithoutAgents.map((item) => item.name).join("، ")}.`);
   }
 
-  const remainingCapacity = activeAccounts.reduce(
-    (sum, account) => sum + Math.max(0, Number(account.adLimit || 0) - (accountCounts.get(account.id) || 0)),
-    0,
-  );
+  const remainingCapacity = getPlanRemainingCapacity(activeAccounts, existingAds, planStart, planEnd);
   if (vehicles.length > remainingCapacity) {
-    throw new Error(`عدد السيارات المختارة (${vehicles.length}) أكبر من السعة المتبقية للفروع (${remainingCapacity}).`);
+    throw new Error(`عدد السيارات المختارة (${vehicles.length}) أكبر من السعة المتبقية للفترة (${remainingCapacity}).`);
   }
 
-  const accountSlots = buildAccountSlots(activeAccounts, accountCounts, vehicles.length);
-  if (accountSlots.length !== vehicles.length) {
-    throw new Error("تعذر توزيع كل السيارات على حدود الفروع الحالية.");
+  const slots = buildBranchDaySlots(activeAccounts, days, existingAds, vehicles.length);
+  if (slots.length !== vehicles.length) {
+    throw new Error("تعذر توزيع كل السيارات على الحدود اليومية الحالية للفروع.");
   }
 
-  const weekAgentCounts = new Map<string, number>();
+  const planAgentCounts = new Map<string, number>();
   const historyAgentCounts = new Map<string, number>();
   const agentDayCounts = new Map<string, number>();
-  const branchDayCounts = new Map<string, number>();
-  const totalDayCounts = new Map<string, number>();
 
   activeAgents.forEach((agent) => {
-    weekAgentCounts.set(agent.id, weekAds.filter((ad) => ad.agentId === agent.id).length);
+    planAgentCounts.set(agent.id, periodAds.filter((ad) => ad.agentId === agent.id).length);
     historyAgentCounts.set(agent.id, existingAds.filter((ad) => ad.agentId === agent.id).length);
   });
-
-  days.forEach((day) => {
-    totalDayCounts.set(day.key, weekAds.filter((ad) => ad.scheduledDate === day.key).length);
-    activeAccounts.forEach((account) => {
-      branchDayCounts.set(
-        `${account.id}:${day.key}`,
-        weekAds.filter((ad) => ad.accountId === account.id && ad.scheduledDate === day.key).length,
-      );
-    });
+  periodAds.forEach((ad) => {
+    if (!ad.agentId || !ad.scheduledDate) return;
+    const key = `${ad.agentId}:${ad.scheduledDate}`;
+    agentDayCounts.set(key, (agentDayCounts.get(key) || 0) + 1);
   });
 
-  weekAds.forEach((ad) => {
-    if (ad.agentId && ad.scheduledDate) {
-      const key = `${ad.agentId}:${ad.scheduledDate}`;
-      agentDayCounts.set(key, (agentDayCounts.get(key) || 0) + 1);
-    }
-  });
-
-  const planId = `week-${weekStart}-${Date.now()}`;
-  const drafts: WeeklyAssignmentDraft[] = [];
+  const planId = `plan-${planStart}-${planEnd}-${Date.now()}`;
+  const drafts: PublishingAssignmentDraft[] = [];
 
   vehicles.forEach((vehicle, index) => {
-    const account = accountSlots[index];
-    const branchAgents = accountAgents.get(account.id) || [];
+    const slot = slots[index];
+    const branchAgents = accountAgents.get(slot.account.id) || [];
 
     const agentChoice = branchAgents
       .map((agent) => ({
         agent,
-        weekUsed: weekAgentCounts.get(agent.id) || 0,
+        dayUsed: agentDayCounts.get(`${agent.id}:${slot.day.key}`) || 0,
+        planUsed: planAgentCounts.get(agent.id) || 0,
         historyUsed: historyAgentCounts.get(agent.id) || 0,
       }))
       .sort(
         (a, b) =>
-          a.weekUsed - b.weekUsed ||
+          a.dayUsed - b.dayUsed ||
+          a.planUsed - b.planUsed ||
           a.historyUsed - b.historyUsed ||
           a.agent.name.localeCompare(b.agent.name, "ar"),
       )[0];
 
-    if (!agentChoice) throw new Error(`لا يوجد مندوب نشط داخل فرع ${account.name}.`);
+    if (!agentChoice) throw new Error(`لا يوجد مندوب نشط داخل فرع ${slot.account.name}.`);
 
-    const dayChoice = days
-      .map((day) => ({
-        day,
-        agentDay: agentDayCounts.get(`${agentChoice.agent.id}:${day.key}`) || 0,
-        branchDay: branchDayCounts.get(`${account.id}:${day.key}`) || 0,
-        totalDay: totalDayCounts.get(day.key) || 0,
-      }))
-      .sort(
-        (a, b) =>
-          a.agentDay - b.agentDay ||
-          a.branchDay - b.branchDay ||
-          a.totalDay - b.totalDay ||
-          a.day.index - b.day.index,
-      )[0];
-
-    if (!dayChoice) throw new Error("تعذر تحديد يوم النشر.");
-
-    weekAgentCounts.set(agentChoice.agent.id, agentChoice.weekUsed + 1);
+    const dayAgentKey = `${agentChoice.agent.id}:${slot.day.key}`;
+    agentDayCounts.set(dayAgentKey, agentChoice.dayUsed + 1);
+    planAgentCounts.set(agentChoice.agent.id, agentChoice.planUsed + 1);
     historyAgentCounts.set(agentChoice.agent.id, agentChoice.historyUsed + 1);
-    agentDayCounts.set(`${agentChoice.agent.id}:${dayChoice.day.key}`, dayChoice.agentDay + 1);
-    branchDayCounts.set(`${account.id}:${dayChoice.day.key}`, dayChoice.branchDay + 1);
-    totalDayCounts.set(dayChoice.day.key, dayChoice.totalDay + 1);
 
     drafts.push({
       vehicleKey: vehicle.key,
@@ -389,7 +369,7 @@ export function buildWeeklyAssignments({
       statement: vehicle.statement,
       modelYear: vehicle.modelYear,
       stockQtySnapshot: vehicle.quantity,
-      accountId: account.id,
+      accountId: slot.account.id,
       agentId: agentChoice.agent.id,
       status: "assigned",
       url: "",
@@ -397,7 +377,7 @@ export function buildWeeklyAssignments({
       weekStart,
       planStart,
       planEnd,
-      scheduledDate: dayChoice.day.key,
+      scheduledDate: slot.day.key,
       coverageCycle,
       planId,
       scheduleOrder: index + 1,

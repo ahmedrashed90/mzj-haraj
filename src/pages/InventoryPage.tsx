@@ -11,15 +11,17 @@ import {
 } from "@phosphor-icons/react";
 import { useNavigate } from "react-router-dom";
 import { useAppData } from "../AppDataContext";
-import { createWeeklyAssignments } from "../data";
+import { createPublishingAssignments } from "../data";
 import {
-  buildWeeklyAssignments,
+  buildPublishingAssignments,
   formatPlanRange,
-  getAccountWeeklyUsage,
+  getAccountPlanCapacity,
+  getAccountPlanUsage,
   getCoverageState,
   getPlanDays,
+  getPlanRemainingCapacity,
+  getPlanTotalCapacity,
   getSuggestedPlanWindow,
-  getWeekRemainingCapacity,
   getWeekStartKey,
 } from "../schedule";
 import type { StockGroup } from "../types";
@@ -36,7 +38,16 @@ function sortEligibleRows(rows: StockGroup[]) {
 
 export function InventoryPage() {
   const navigate = useNavigate();
-  const { accounts, agents, ads, stock, stockLoading, stockError, refreshStock } = useAppData();
+  const {
+    accounts,
+    agents,
+    ads,
+    stock,
+    stockExcludedAgencyVehicles,
+    stockLoading,
+    stockError,
+    refreshStock,
+  } = useAppData();
 
   const [search, setSearch] = useState("");
   const [coverage, setCoverage] = useState<"available" | "covered" | "all">("available");
@@ -49,8 +60,8 @@ export function InventoryPage() {
   const [error, setError] = useState("");
 
   const suggested = getSuggestedPlanWindow();
-  const suggestedWeekStart = getWeekStartKey(suggested.planStart);
   const suggestedDays = getPlanDays(suggested.planStart, suggested.planEnd).length;
+  const suggestedWeekStart = getWeekStartKey(suggested.planStart);
 
   const coverageState = useMemo(() => getCoverageState(stock, ads), [stock, ads]);
   const eligibleKeySet = useMemo(
@@ -59,18 +70,22 @@ export function InventoryPage() {
   );
 
   const activeAccounts = useMemo(() => accounts.filter((account) => account.active), [accounts]);
-  const totalCapacity = useMemo(
+  const totalDailyCapacity = useMemo(
     () => activeAccounts.reduce((sum, account) => sum + Number(account.adLimit || 0), 0),
     [activeAccounts],
+  );
+  const totalPeriodCapacity = useMemo(
+    () => getPlanTotalCapacity(accounts, suggested.planStart, suggested.planEnd),
+    [accounts, suggested.planStart, suggested.planEnd],
   );
   const activeAgents = useMemo(() => agents.filter((agent) => agent.active), [agents]);
   const missingBranchAgents = activeAgents.filter((agent) => !agent.accountId).length;
 
-  const remainingForSuggestedWeek = useMemo(
-    () => getWeekRemainingCapacity(accounts, ads, suggestedWeekStart),
-    [accounts, ads, suggestedWeekStart],
+  const remainingForSuggestedPeriod = useMemo(
+    () => getPlanRemainingCapacity(accounts, ads, suggested.planStart, suggested.planEnd),
+    [accounts, ads, suggested.planStart, suggested.planEnd],
   );
-  const automaticTargetCount = Math.min(coverageState.eligibleRows.length, remainingForSuggestedWeek);
+  const automaticTargetCount = Math.min(coverageState.eligibleRows.length, remainingForSuggestedPeriod);
 
   const latestAdByVehicle = useMemo(() => {
     const map = new Map<string, (typeof ads)[number]>();
@@ -122,11 +137,11 @@ export function InventoryPage() {
   function validateBeforePlan(vehicleRows: StockGroup[]) {
     if (!vehicleRows.length) return "لا توجد سيارات متاحة لإنشاء الجدول.";
     if (!accounts.some((account) => account.active && Number(account.adLimit || 0) > 0)) {
-      return "أضف فرعًا نشطًا وحدد له حد إعلانات أكبر من صفر.";
+      return "أضف فرعًا نشطًا وحدد له حد إعلانات يومي أكبر من صفر.";
     }
     if (!agents.some((agent) => agent.active)) return "أضف مندوبًا نشطًا أولًا.";
-    if (vehicleRows.length > remainingForSuggestedWeek) {
-      return `عدد السيارات (${vehicleRows.length}) أكبر من السعة المتبقية لهذه الفترة (${remainingForSuggestedWeek}).`;
+    if (vehicleRows.length > remainingForSuggestedPeriod) {
+      return `عدد السيارات (${vehicleRows.length}) أكبر من السعة المتبقية للفترة (${remainingForSuggestedPeriod}).`;
     }
     return "";
   }
@@ -147,8 +162,8 @@ export function InventoryPage() {
 
   function prepareAutomaticPlan() {
     setError("");
-    if (!remainingForSuggestedWeek) {
-      return setError("سعة الفروع لهذه الفترة مستخدمة بالكامل. حدّث حدود الفروع إذا زادت سعة النشر في حراج.");
+    if (!remainingForSuggestedPeriod) {
+      return setError("سعة الفترة مستخدمة بالكامل. إذا حراج رفع الحد اليومي لأي فرع، حدّثه أولًا ثم جهّز الجدول من جديد.");
     }
     const candidates = sortEligibleRows(coverageState.eligibleRows).slice(0, automaticTargetCount);
     openPlanForRows(candidates);
@@ -161,16 +176,16 @@ export function InventoryPage() {
     setSelectedKeys(new Set(candidates.map((row) => row.key)));
   }
 
-  const weekStart = planStart ? getWeekStartKey(planStart) : suggestedWeekStart;
-  const remainingForPlan = getWeekRemainingCapacity(accounts, ads, weekStart);
+  const periodDays = planStart && planEnd ? getPlanDays(planStart, planEnd).length : suggestedDays;
+  const remainingForPlan = planStart && planEnd ? getPlanRemainingCapacity(accounts, ads, planStart, planEnd) : remainingForSuggestedPeriod;
 
   const preview = useMemo(() => {
     if (!showPlan || !draftRows.length || !planStart || !planEnd) {
-      return { rows: [] as ReturnType<typeof buildWeeklyAssignments>, error: "" };
+      return { rows: [] as ReturnType<typeof buildPublishingAssignments>, error: "" };
     }
     try {
       return {
-        rows: buildWeeklyAssignments({
+        rows: buildPublishingAssignments({
           vehicles: draftRows,
           planStart,
           planEnd,
@@ -183,7 +198,7 @@ export function InventoryPage() {
       };
     } catch (failure) {
       return {
-        rows: [] as ReturnType<typeof buildWeeklyAssignments>,
+        rows: [] as ReturnType<typeof buildPublishingAssignments>,
         error: failure instanceof Error ? failure.message : "تعذر تجهيز الجدول",
       };
     }
@@ -198,10 +213,11 @@ export function InventoryPage() {
       .map((account) => ({
         account,
         count: planned.get(account.id) || 0,
-        used: getAccountWeeklyUsage(ads, account.id, weekStart),
+        used: planStart && planEnd ? getAccountPlanUsage(ads, account.id, planStart, planEnd) : 0,
+        capacity: planStart && planEnd ? getAccountPlanCapacity(account, planStart, planEnd) : 0,
         reps: agents.filter((agent) => agent.accountId === account.id && agent.active).length,
       }));
-  }, [preview.rows, accounts, agents, ads, weekStart]);
+  }, [preview.rows, accounts, agents, ads, planStart, planEnd]);
 
   const previewByAgent = useMemo(() => {
     const map = new Map<string, number>();
@@ -231,11 +247,11 @@ export function InventoryPage() {
 
     setSaving(true);
     try {
-      await createWeeklyAssignments(preview.rows);
+      await createPublishingAssignments(preview.rows);
       setShowPlan(false);
       setDraftKeys(new Set());
       clearSelection();
-      navigate(`/schedule?week=${weekStart}`);
+      navigate(`/schedule?week=${getWeekStartKey(planStart)}`);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "تعذر إنشاء جدول النشر");
     } finally {
@@ -246,7 +262,7 @@ export function InventoryPage() {
   return <>
     <PageTitle
       title="مخزون السيارات"
-      subtitle="النظام يختار السيارات التي لم تدخل دورة النشر الحالية أولًا، ثم يوزع إعلانات كل فرع على مناديب نفس الفرع فقط."
+      subtitle="سيارات المكان = الوكالة مستبعدة من إعلانات حراج. الأولوية دائمًا للسيارات التي لم تدخل دورة النشر الحالية."
       actions={
         <button className="secondary-button" onClick={() => void refreshStock()} disabled={stockLoading}>
           <ArrowClockwise size={18} />{stockLoading ? "جارٍ القراءة" : "تحديث الاستوك"}
@@ -256,6 +272,7 @@ export function InventoryPage() {
 
     {stockError ? <div className="alert warning"><WarningCircle size={19} />{stockError}</div> : null}
     {error ? <div className="alert error"><WarningCircle size={19} />{error}</div> : null}
+    {stockExcludedAgencyVehicles > 0 ? <div className="alert info"><CheckCircle size={19} />تم استبعاد {stockExcludedAgencyVehicles} سيارة لأن المكان = الوكالة.</div> : null}
     {missingBranchAgents ? <div className="alert warning"><WarningCircle size={19} />يوجد {missingBranchAgents} مندوب نشط بدون فرع. اربطه بفرعه من صفحة الفروع والمناديب.</div> : null}
     {coverageState.startedNewCycle && stock.length ? <div className="alert success"><CheckCircle size={19} />تمت تغطية كل الاستوك في الدورة السابقة. تبدأ الآن دورة تغطية جديدة رقم {coverageState.cycle}.</div> : null}
 
@@ -267,16 +284,16 @@ export function InventoryPage() {
           <h2>{formatPlanRange(suggested.planStart, suggested.planEnd)}</h2>
           <p>
             {suggested.isFridayPreparation
-              ? "اليوم الجمعة: الجدول الجديد يبدأ السبت وينتهي الجمعة التالية، ويستخدم حدود الفروع الحالية وقت التجهيز."
-              : "هذا الجدول يبدأ من بكرة وينتهي يوم الجمعة. يوم الجمعة جهّز الجدول الجديد من السبت إلى الجمعة."}
+              ? "اليوم الجمعة: الجدول الجديد يبدأ السبت وينتهي الجمعة التالية ويستخدم آخر حد يومي مسجل لكل فرع."
+              : "هذا الجدول يبدأ من بكرة وينتهي الجمعة. الحد اليومي لكل فرع يتكرر في كل يوم من أيام الفترة."}
           </p>
         </div>
       </div>
       <div className="plan-window-metrics">
         <div><span>أيام النشر</span><b>{suggestedDays}</b></div>
-        <div><span>سعة الفروع</span><b>{totalCapacity}</b></div>
-        <div><span>المتاح لهذه الفترة</span><b>{remainingForSuggestedWeek}</b></div>
-        <div><span>سيارات جديدة ستُختار</span><b>{automaticTargetCount}</b></div>
+        <div><span>حد الشركة اليومي</span><b>{totalDailyCapacity}</b></div>
+        <div><span>سعة الفترة</span><b>{totalPeriodCapacity}</b></div>
+        <div><span>متاح للتجهيز</span><b>{automaticTargetCount}</b></div>
       </div>
       <button className="primary-button plan-window-action" onClick={prepareAutomaticPlan} disabled={!automaticTargetCount || stockLoading}>
         <CalendarBlank size={20} />تجهيز جدول النشر تلقائيًا <b>{automaticTargetCount || ""}</b>
@@ -287,7 +304,7 @@ export function InventoryPage() {
       <StatCard label="دورة التغطية" value={coverageState.cycle} hint="لا تكرار قبل تغطية الاستوك" tone="info" />
       <StatCard label="متاح للتكليف" value={coverageState.eligibleRows.length} hint="لم يدخل الدورة الحالية" tone={coverageState.eligibleRows.length ? "warn" : "good"} />
       <StatCard label="تمت تغطيته" value={coverageState.coveredCount} hint={`من ${stock.length} سيارة/فئة`} tone="good" />
-      <StatCard label="سعة الفروع الحالية" value={totalCapacity} hint="مجموع حدود حسابات حراج" />
+      <StatCard label="الحد اليومي للشركة" value={totalDailyCapacity} hint="مجموع حدود الفروع اليومية" />
       <StatCard label="المحدد يدويًا" value={selectedRows.length} hint="اختياري قبل تجهيز الجدول" tone={selectedRows.length ? "info" : "default"} />
     </section>
 
@@ -309,7 +326,7 @@ export function InventoryPage() {
 
     <section className="panel table-panel">
       {!stock.length && !stockLoading ? (
-        <EmptyState title="لا توجد بيانات" text={stockError ? "تعذر الاتصال بمصدر الاستوك." : "لا توجد سيارات متاح للبيع حاليًا."} />
+        <EmptyState title="لا توجد بيانات" text={stockError ? "تعذر الاتصال بمصدر الاستوك." : "لا توجد سيارات متاح للبيع خارج الوكالة حاليًا."} />
       ) : !rows.length ? (
         <EmptyState title="لا توجد نتائج" text={coverage === "available" ? "كل السيارات الحالية تمت تغطيتها في هذه الدورة." : "غيّر البحث أو الفلتر."} />
       ) : (
@@ -340,20 +357,20 @@ export function InventoryPage() {
     {showPlan ? <div className="modal-backdrop" onMouseDown={(e) => { if (e.currentTarget === e.target && !saving) setShowPlan(false); }}>
       <div className="modal-card weekly-plan-modal">
         <div className="modal-head">
-          <div><h2>مراجعة جدول النشر قبل الاعتماد</h2><p>لن يتم الحفظ إلا بعد مراجعة توزيع الفروع والمناديب.</p></div>
+          <div><h2>مراجعة جدول النشر قبل الاعتماد</h2><p>الحد المسجل لكل فرع هو حد يومي، والنظام يوزعه على كل يوم داخل الفترة.</p></div>
           <button className="icon-button" onClick={() => setShowPlan(false)} disabled={saving}>×</button>
         </div>
 
         <div className="period-card locked-period">
           <CalendarBlank size={23} />
           <div><span>فترة النشر</span><strong>{formatPlanRange(planStart, planEnd)}</strong><small>{suggested.isFridayPreparation ? "السبت إلى الجمعة" : "من بكرة إلى الجمعة"} · الفترة محددة تلقائيًا</small></div>
-          <span className="locked-period-badge">{getPlanDays(planStart, planEnd).length} أيام</span>
+          <span className="locked-period-badge">{periodDays} أيام</span>
         </div>
 
         <div className="plan-summary-grid">
           <div><span>إعلانات الجدول</span><strong>{draftRows.length}</strong></div>
-          <div><span>السعة المتبقية قبل الحفظ</span><strong>{remainingForPlan}</strong></div>
-          <div><span>دورة التغطية</span><strong>{coverageState.cycle}</strong></div>
+          <div><span>الحد اليومي للشركة</span><strong>{totalDailyCapacity}</strong></div>
+          <div><span>السعة المتبقية للفترة</span><strong>{remainingForPlan}</strong></div>
           <div><span>المناديب النشطون</span><strong>{activeAgents.length}</strong></div>
         </div>
 
@@ -361,9 +378,9 @@ export function InventoryPage() {
           <div className="preview-columns">
             <div className="preview-box">
               <h3>توزيع الفروع</h3>
-              {previewByAccount.map(({ account, count, used, reps }) => <div key={account.id}>
-                <span>{account.name}<small>{reps} مندوب نشط · موجود مسبقًا {used}</small></span>
-                <b>+{count} / {account.adLimit}</b>
+              {previewByAccount.map(({ account, count, used, capacity, reps }) => <div key={account.id}>
+                <span>{account.name}<small>حد يومي {account.adLimit} × {periodDays} أيام = {capacity} · {reps} مندوب نشط · موجود مسبقًا {used}</small></span>
+                <b>+{count} / {capacity}</b>
               </div>)}
             </div>
             <div className="preview-box">
@@ -374,7 +391,7 @@ export function InventoryPage() {
               </div>)}
             </div>
           </div>
-          <div className="preview-note"><CheckCircle size={18} />كل إعلان مرتبط بفرعه، ولا يتم إسناده إلا لمندوب نشط من نفس الفرع. السيارات المختارة لن تتكرر قبل تغطية باقي الاستوك.</div>
+          <div className="preview-note"><CheckCircle size={18} />كل فرع يأخذ حدّه اليومي في أيام الفترة، وكل تكليف يذهب فقط إلى مندوب نشط من نفس الفرع. السيارات لا تتكرر قبل تغطية باقي الاستوك.</div>
         </>}
 
         <div className="modal-actions">

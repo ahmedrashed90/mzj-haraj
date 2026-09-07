@@ -1,5 +1,5 @@
 import logo from "../assets/mzj-logo.png";
-import { formatDateArabic, formatPlanRange, isPublished } from "../schedule";
+import { formatDateArabic, formatPlanRange, getPlanDays, isPublished } from "../schedule";
 import type { Agent, HarajAccount, HarajAd } from "../types";
 
 const policies = [
@@ -18,9 +18,9 @@ const accountFollowUp = [
   "إرسال رابط كل إعلان بعد النشر حتى يتم تسجيله في النظام.",
 ];
 
-function chunks<T>(rows: T[], firstSize = 7, nextSize = 11) {
-  if (!rows.length) return [[] as T[]];
+function chunks<T>(rows: T[], firstSize = 7, nextSize = 12) {
   const out: T[][] = [];
+  if (!rows.length) return out;
   out.push(rows.slice(0, firstSize));
   let cursor = firstSize;
   while (cursor < rows.length) {
@@ -45,6 +45,10 @@ export function BranchSchedulePdf({
 }) {
   const agentById = new Map(agents.map((agent) => [agent.id, agent]));
   const pages = chunks(ads);
+  if (!pages.length) return null;
+
+  const planDays = getPlanDays(planStart, planEnd).length;
+  const periodCapacity = Number(account.adLimit || 0) * planDays;
   const activeBranchAgents = agents.filter((agent) => agent.active && agent.accountId === account.id).length;
 
   return <div className="pdf-export-sheet" data-branch-id={account.id} aria-hidden="true">
@@ -59,10 +63,15 @@ export function BranchSchedulePdf({
       </header>
 
       <div className="pdf-summary">
-        <div><span>حد إعلانات الفرع</span><strong>{account.adLimit}</strong></div>
+        <div><span>الحد اليومي</span><strong>{account.adLimit}</strong></div>
+        <div><span>أيام الجدول</span><strong>{planDays}</strong></div>
+        <div><span>إجمالي حد الفترة</span><strong>{periodCapacity}</strong></div>
         <div><span>إعلانات الجدول</span><strong>{ads.length}</strong></div>
-        <div><span>المناديب النشطون</span><strong>{activeBranchAgents}</strong></div>
-        <div><span>الصفحة</span><strong>{pageIndex + 1} / {pages.length}</strong></div>
+      </div>
+
+      <div className="pdf-sub-summary">
+        <span>المناديب النشطون في الفرع: <b>{activeBranchAgents}</b></span>
+        <span>صفحة <b>{pageIndex + 1}</b> من <b>{pages.length}</b></span>
       </div>
 
       <table className="pdf-table">

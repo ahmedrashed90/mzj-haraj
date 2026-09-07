@@ -14,6 +14,15 @@ type PlatformVehicle = {
   model_year?: string | number | null;
   status_code?: string | null;
   status_name?: string | null;
+  location?: unknown;
+  location_name?: unknown;
+  current_location?: unknown;
+  current_location_name?: unknown;
+  place?: unknown;
+  place_name?: unknown;
+  warehouse?: unknown;
+  warehouse_name?: unknown;
+  [key: string]: unknown;
 };
 
 type PlatformVehiclesResponse = {
@@ -64,7 +73,7 @@ function platformConfig() {
 async function platformSessionCookie(baseUrl: string, identifier: string, password: string) {
   const login = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
-    headers: { "content-type": "application/json", "user-agent": "MZJ-Haraj-Manager/1.1" },
+    headers: { "content-type": "application/json", "user-agent": "MZJ-Haraj-Manager/1.6" },
     body: JSON.stringify({ identifier, password }),
     redirect: "manual",
   });
@@ -80,9 +89,10 @@ async function platformSessionCookie(baseUrl: string, identifier: string, passwo
 async function readAllAvailableVehicles(baseUrl: string, cookie: string) {
   const all: PlatformVehicle[] = [];
   let page = 1;
+  let fetchedRows = 0;
   let total = Number.POSITIVE_INFINITY;
 
-  while (all.length < total && page <= MAX_PAGES) {
+  while (fetchedRows < total && page <= MAX_PAGES) {
     const url = new URL(`${baseUrl}/api/operations`);
     url.searchParams.set("resource", "vehicles");
     url.searchParams.set("status", "available_for_sale");
@@ -91,21 +101,50 @@ async function readAllAvailableVehicles(baseUrl: string, cookie: string) {
 
     const result = await fetch(url, {
       method: "GET",
-      headers: { cookie, accept: "application/json", "user-agent": "MZJ-Haraj-Manager/1.1" },
+      headers: { cookie, accept: "application/json", "user-agent": "MZJ-Haraj-Manager/1.6" },
       cache: "no-store",
     });
     const payload = await result.json().catch(() => ({})) as PlatformVehiclesResponse;
     if (!result.ok || payload.ok === false) throw new Error(payload.error || "PLATFORM_STOCK_FAILED");
 
     const rows = Array.isArray(payload.rows) ? payload.rows : [];
+    fetchedRows += rows.length;
     all.push(...rows.filter((row) => clean(row.status_code) === "available_for_sale" || clean(row.status_name) === "متاح للبيع"));
-    total = Number.isFinite(Number(payload.total)) ? Number(payload.total) : all.length;
-    if (!rows.length || all.length >= total) break;
+    total = Number.isFinite(Number(payload.total)) ? Number(payload.total) : fetchedRows;
+
+    if (!rows.length || rows.length < PAGE_SIZE || fetchedRows >= total) break;
     page += 1;
   }
 
-  if (page > MAX_PAGES && all.length < total) throw new Error("PLATFORM_STOCK_TOO_LARGE");
+  if (page > MAX_PAGES && fetchedRows < total) throw new Error("PLATFORM_STOCK_TOO_LARGE");
   return all;
+}
+
+function isAgencyValue(value: unknown) {
+  const normalized = clean(value).toLowerCase();
+  return normalized === "الوكالة" || normalized === "وكالة" || normalized === "agency";
+}
+
+function isAgencyVehicle(vehicle: PlatformVehicle) {
+  const directCandidates = [
+    vehicle.location,
+    vehicle.location_name,
+    vehicle.current_location,
+    vehicle.current_location_name,
+    vehicle.place,
+    vehicle.place_name,
+    vehicle.warehouse,
+    vehicle.warehouse_name,
+  ];
+  if (directCandidates.some(isAgencyValue)) return true;
+
+  // The platform may expose the Arabic "المكان" field under a different key.
+  // An exact standalone value of "الوكالة" is safe to exclude regardless of that key.
+  return Object.values(vehicle).some((value) => {
+    if (isAgencyValue(value)) return true;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    return Object.values(value as Record<string, unknown>).some(isAgencyValue);
+  });
 }
 
 function groupVehicles(vehicles: PlatformVehicle[]) {
@@ -132,16 +171,19 @@ export default async function handler(request: VercelRequest, response: VercelRe
 
     const { baseUrl, identifier, password } = platformConfig();
     const cookie = await platformSessionCookie(baseUrl, identifier, password);
-    const vehicles = await readAllAvailableVehicles(baseUrl, cookie);
-    const rows = groupVehicles(vehicles);
+    const availableVehicles = await readAllAvailableVehicles(baseUrl, cookie);
+    const eligibleVehicles = availableVehicles.filter((vehicle) => !isAgencyVehicle(vehicle));
+    const excludedAgencyVehicles = availableVehicles.length - eligibleVehicles.length;
+    const rows = groupVehicles(eligibleVehicles);
 
     return json(response, 200, {
       ok: true,
       rows,
-      totalVehicles: vehicles.length,
+      totalVehicles: eligibleVehicles.length,
       totalGroups: rows.length,
+      excludedAgencyVehicles,
       fetchedAt: new Date().toISOString(),
-      source: "MZJ Platform / Operations / Vehicles / available_for_sale",
+      source: "MZJ Platform / Operations / Vehicles / available_for_sale / excluding agency location",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "UNKNOWN_ERROR";

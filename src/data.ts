@@ -79,15 +79,16 @@ export async function addAd(input: Omit<HarajAd, "id" | "assignedAt" | "updatedA
   return addDoc(collection(db, "haraj_ads"), { ...input, assignedAt: serverTimestamp(), updatedAt: serverTimestamp() });
 }
 
-export async function createWeeklyAssignments(assignments: Array<Omit<HarajAd, "id" | "assignedAt" | "updatedAt" | "publishedAt">>) {
-  if (!assignments.length) return;
-  if (assignments.length > 450) throw new Error("الحد الأقصى لإنشاء جدول واحد هو 450 تكليفًا.");
-  const batch = writeBatch(db);
-  assignments.forEach((assignment) => {
-    const ref = doc(collection(db, "haraj_ads"));
-    batch.set(ref, { ...assignment, assignedAt: serverTimestamp(), updatedAt: serverTimestamp() });
-  });
-  await batch.commit();
+export async function createPublishingAssignments(assignments: Array<Omit<HarajAd, "id" | "assignedAt" | "updatedAt" | "publishedAt">>) {
+  const chunkSize = 400;
+  for (let start = 0; start < assignments.length; start += chunkSize) {
+    const batch = writeBatch(db);
+    assignments.slice(start, start + chunkSize).forEach((assignment) => {
+      const ref = doc(collection(db, "haraj_ads"));
+      batch.set(ref, { ...assignment, assignedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    });
+    await batch.commit();
+  }
 }
 
 export async function updateAd(id: string, patch: Partial<HarajAd>) {
@@ -98,6 +99,16 @@ export async function updateAd(id: string, patch: Partial<HarajAd>) {
 
 export async function removeAd(id: string) {
   return deleteDoc(doc(db, "haraj_ads", id));
+}
+
+export async function removeScheduleAds(ids: string[]) {
+  const uniqueIds = [...new Set(ids.filter(Boolean))];
+  const chunkSize = 400;
+  for (let start = 0; start < uniqueIds.length; start += chunkSize) {
+    const batch = writeBatch(db);
+    uniqueIds.slice(start, start + chunkSize).forEach((id) => batch.delete(doc(db, "haraj_ads", id)));
+    await batch.commit();
+  }
 }
 
 export async function fetchStock(): Promise<StockResponse> {

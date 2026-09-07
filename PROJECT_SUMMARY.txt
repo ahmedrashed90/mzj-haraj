@@ -1,14 +1,12 @@
-MZJ Haraj Manager v1.5.0 CLEAN
+MZJ Haraj Manager v1.6.0 CLEAN
 
-- Automatic publishing window visible before schedule creation.
-- Non-Friday: tomorrow -> Friday.
-- Friday: next Saturday -> next Friday.
-- One-click automatic plan preparation up to remaining branch capacity.
-- Branch ad limits are flexible and independent from branch representative count.
-- Assignments never cross branches: branch ads -> active reps of same branch only.
-- Leave/inactive reps excluded.
-- Balanced branch rep/day allocation.
-- Stock coverage prevents repetition until current stock is covered.
-- Branch PDF includes MZJ branding, weekly schedule, Haraj policies, messages/comments/restriction follow-up.
-- Tajawal font and MZJ brown/copper UI.
-- api/stock.ts unchanged and read-only.
+- Haraj account adLimit is DAILY.
+- Plan capacity = daily branch limit x number of plan days.
+- Branch assignments stay inside the same branch and use active reps only.
+- Non-Friday plan: tomorrow through Friday.
+- Friday plan: next Saturday through next Friday.
+- Vehicles whose location/place value is Agency/الوكالة are excluded from Haraj stock.
+- Full schedule deletion is available from Schedule page.
+- Branch PDF has no trailing blank print page and includes daily limit + period capacity.
+- Tajawal remains the application and PDF font.
+- MZJ stock integration remains read-only.

@@ -1,6 +1,7 @@
 export type HarajAccount = {
   id: string;
   name: string;
+  /** Current DAILY publishing limit for this Haraj branch/account. */
   adLimit: number;
   note?: string;
   active: boolean;
@@ -64,6 +65,7 @@ export type StockResponse = {
   rows: StockGroup[];
   totalVehicles: number;
   totalGroups: number;
+  excludedAgencyVehicles?: number;
   fetchedAt: string;
   source: string;
   error?: string;
