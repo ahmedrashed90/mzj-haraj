@@ -1,4 +1,4 @@
-# MZJ Haraj Manager — v1.6.0 CLEAN
+# MZJ Haraj Manager — v1.6.1 CLEAN
 
 نظام داخلي مستقل لإدارة جدول نشر إعلانات حراج وربطه بمخزون MZJ الحقيقي، باستخدام Firebase + Vercel.
 
@@ -50,7 +50,7 @@
 - `agents`
 - `haraj_ads`
 
-حقل `adLimit` في `haraj_accounts` يظل بنفس الاسم للتوافق مع البيانات الموجودة، لكن معناه في v1.6.0 هو **الحد اليومي**.
+حقل `adLimit` في `haraj_accounts` يظل بنفس الاسم للتوافق مع البيانات الموجودة، لكن معناه في v1.6.1 هو **الحد اليومي**.
 
 ## Vercel Environment Variables
 

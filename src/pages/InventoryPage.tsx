@@ -53,6 +53,7 @@ export function InventoryPage() {
   const [coverage, setCoverage] = useState<"available" | "covered" | "all">("available");
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [draftKeys, setDraftKeys] = useState<Set<string>>(new Set());
+  const [planAutomatic, setPlanAutomatic] = useState(false);
   const [showPlan, setShowPlan] = useState(false);
   const [planStart, setPlanStart] = useState("");
   const [planEnd, setPlanEnd] = useState("");
@@ -85,7 +86,8 @@ export function InventoryPage() {
     () => getPlanRemainingCapacity(accounts, ads, suggested.planStart, suggested.planEnd),
     [accounts, ads, suggested.planStart, suggested.planEnd],
   );
-  const automaticTargetCount = Math.min(coverageState.eligibleRows.length, remainingForSuggestedPeriod);
+  const automaticTargetCount = stock.length ? remainingForSuggestedPeriod : 0;
+  const automaticUniqueSelectionCount = Math.min(coverageState.eligibleRows.length, remainingForSuggestedPeriod);
 
   const latestAdByVehicle = useMemo(() => {
     const map = new Map<string, (typeof ads)[number]>();
@@ -155,6 +157,7 @@ export function InventoryPage() {
     setPlanStart(freshWindow.planStart);
     setPlanEnd(freshWindow.planEnd);
     const keys = new Set(vehicleRows.map((row) => row.key));
+    setPlanAutomatic(false);
     setDraftKeys(keys);
     setSelectedKeys(keys);
     setShowPlan(true);
@@ -165,14 +168,20 @@ export function InventoryPage() {
     if (!remainingForSuggestedPeriod) {
       return setError("سعة الفترة مستخدمة بالكامل. إذا حراج رفع الحد اليومي لأي فرع، حدّثه أولًا ثم جهّز الجدول من جديد.");
     }
-    const candidates = sortEligibleRows(coverageState.eligibleRows).slice(0, automaticTargetCount);
-    openPlanForRows(candidates);
+    if (!stock.length) return setError("لا توجد سيارات متاحة لإنشاء الجدول.");
+    const freshWindow = getSuggestedPlanWindow();
+    setPlanStart(freshWindow.planStart);
+    setPlanEnd(freshWindow.planEnd);
+    setPlanAutomatic(true);
+    setDraftKeys(new Set());
+    setSelectedKeys(new Set());
+    setShowPlan(true);
   }
 
   function selectAutomaticRows() {
     setError("");
-    if (!automaticTargetCount) return setError("لا توجد سعة أو سيارات جديدة متاحة للتحديد.");
-    const candidates = sortEligibleRows(coverageState.eligibleRows).slice(0, automaticTargetCount);
+    if (!automaticUniqueSelectionCount) return setError("لا توجد سعة أو سيارات جديدة متاحة للتحديد.");
+    const candidates = sortEligibleRows(coverageState.eligibleRows).slice(0, automaticUniqueSelectionCount);
     setSelectedKeys(new Set(candidates.map((row) => row.key)));
   }
 
@@ -180,19 +189,24 @@ export function InventoryPage() {
   const remainingForPlan = planStart && planEnd ? getPlanRemainingCapacity(accounts, ads, planStart, planEnd) : remainingForSuggestedPeriod;
 
   const preview = useMemo(() => {
-    if (!showPlan || !draftRows.length || !planStart || !planEnd) {
+    if (!showPlan || !planStart || !planEnd || (!planAutomatic && !draftRows.length)) {
       return { rows: [] as ReturnType<typeof buildPublishingAssignments>, error: "" };
     }
     try {
+      const requested = planAutomatic
+        ? getPlanRemainingCapacity(accounts, ads, planStart, planEnd)
+        : draftRows.length;
       return {
         rows: buildPublishingAssignments({
-          vehicles: draftRows,
+          vehicles: planAutomatic ? stock : draftRows,
           planStart,
           planEnd,
           coverageCycle: coverageState.cycle,
           accounts,
           agents,
           existingAds: ads,
+          requestedCount: requested,
+          automatic: planAutomatic,
         }),
         error: "",
       };
@@ -202,7 +216,7 @@ export function InventoryPage() {
         error: failure instanceof Error ? failure.message : "تعذر تجهيز الجدول",
       };
     }
-  }, [showPlan, draftRows, planStart, planEnd, coverageState.cycle, accounts, agents, ads]);
+  }, [showPlan, planAutomatic, stock, draftRows, planStart, planEnd, coverageState.cycle, accounts, agents, ads]);
 
   const previewByAccount = useMemo(() => {
     const planned = new Map<string, number>();
@@ -238,7 +252,7 @@ export function InventoryPage() {
 
     const latest = getCoverageState(stock, ads);
     const latestEligible = new Set(latest.eligibleRows.map((row) => row.key));
-    if (latest.cycle !== coverageState.cycle || draftRows.some((row) => !latestEligible.has(row.key))) {
+    if (!planAutomatic && (latest.cycle !== coverageState.cycle || draftRows.some((row) => !latestEligible.has(row.key)))) {
       setShowPlan(false);
       setDraftKeys(new Set());
       clearSelection();
@@ -293,7 +307,7 @@ export function InventoryPage() {
         <div><span>أيام النشر</span><b>{suggestedDays}</b></div>
         <div><span>حد الشركة اليومي</span><b>{totalDailyCapacity}</b></div>
         <div><span>سعة الفترة</span><b>{totalPeriodCapacity}</b></div>
-        <div><span>متاح للتجهيز</span><b>{automaticTargetCount}</b></div>
+        <div><span>تكليفات الفترة المتاحة</span><b>{automaticTargetCount}</b></div>
       </div>
       <button className="primary-button plan-window-action" onClick={prepareAutomaticPlan} disabled={!automaticTargetCount || stockLoading}>
         <CalendarBlank size={20} />تجهيز جدول النشر تلقائيًا <b>{automaticTargetCount || ""}</b>
@@ -318,7 +332,7 @@ export function InventoryPage() {
         </select>
       </div>
       <div className="selection-actions">
-        <button className="secondary-button" onClick={selectAutomaticRows} disabled={!automaticTargetCount}><CheckSquare size={18} />تحديد {automaticTargetCount || ""} تلقائيًا</button>
+        <button className="secondary-button" onClick={selectAutomaticRows} disabled={!automaticUniqueSelectionCount}><CheckSquare size={18} />تحديد {automaticUniqueSelectionCount || ""} سيارة جديدة</button>
         {selectedRows.length ? <button className="ghost-button" onClick={clearSelection}>إلغاء التحديد</button> : null}
         <button className="secondary-button emphasized" onClick={() => openPlanForRows(selectedRows)} disabled={!selectedRows.length}><CalendarBlank size={19} />تجهيز المحدد <b>{selectedRows.length || ""}</b></button>
       </div>
@@ -368,7 +382,7 @@ export function InventoryPage() {
         </div>
 
         <div className="plan-summary-grid">
-          <div><span>إعلانات الجدول</span><strong>{draftRows.length}</strong></div>
+          <div><span>إعلانات الجدول</span><strong>{preview.rows.length}</strong></div>
           <div><span>الحد اليومي للشركة</span><strong>{totalDailyCapacity}</strong></div>
           <div><span>السعة المتبقية للفترة</span><strong>{remainingForPlan}</strong></div>
           <div><span>المناديب النشطون</span><strong>{activeAgents.length}</strong></div>
@@ -396,7 +410,7 @@ export function InventoryPage() {
 
         <div className="modal-actions">
           <button className="ghost-button" onClick={() => setShowPlan(false)} disabled={saving}>إلغاء</button>
-          <button className="primary-button" onClick={() => void createPlan()} disabled={saving || Boolean(preview.error)}><Plus size={18} />{saving ? "جارٍ إنشاء الجدول..." : `اعتماد جدول ${draftRows.length} إعلان`}</button>
+          <button className="primary-button" onClick={() => void createPlan()} disabled={saving || Boolean(preview.error)}><Plus size={18} />{saving ? "جارٍ إنشاء الجدول..." : `اعتماد جدول ${preview.rows.length} إعلان`}</button>
         </div>
       </div>
     </div> : null}

@@ -228,6 +228,8 @@ type BuildPublishingAssignmentsInput = {
   accounts: HarajAccount[];
   agents: Agent[];
   existingAds: HarajAd[];
+  requestedCount?: number;
+  automatic?: boolean;
 };
 
 type BranchDaySlot = {
@@ -269,6 +271,51 @@ function buildBranchDaySlots(
   return slots;
 }
 
+type CoverageVehicleTarget = {
+  vehicle: StockGroup;
+  coverageCycle: number;
+};
+
+function buildCoverageVehicleTargets(
+  stock: StockGroup[],
+  existingAds: HarajAd[],
+  requested: number,
+  startCycle: number,
+) {
+  const ordered = [...stock].sort(
+    (a, b) =>
+      a.carName.localeCompare(b.carName, "ar") ||
+      a.statement.localeCompare(b.statement, "ar") ||
+      a.modelYear.localeCompare(b.modelYear, "ar"),
+  );
+  const stockKeys = new Set(ordered.map((row) => row.key));
+  const relevantAds = existingAds.filter(countsForCoverage);
+  let cycle = Math.max(1, startCycle, currentCoverageCycle(relevantAds));
+  let covered = new Set(
+    relevantAds
+      .filter((ad) => getCoverageCycle(ad) === cycle && stockKeys.has(ad.vehicleKey))
+      .map((ad) => ad.vehicleKey),
+  );
+
+  if (covered.size >= ordered.length && ordered.length) {
+    cycle += 1;
+    covered = new Set<string>();
+  }
+
+  const targets: CoverageVehicleTarget[] = [];
+  while (targets.length < requested && ordered.length) {
+    const next = ordered.find((row) => !covered.has(row.key));
+    if (!next) {
+      cycle += 1;
+      covered = new Set<string>();
+      continue;
+    }
+    targets.push({ vehicle: next, coverageCycle: cycle });
+    covered.add(next.key);
+  }
+  return targets;
+}
+
 /**
  * Creates the publishing draft from DAILY branch limits.
  * Example: a branch limit of 10 for a 4-day plan produces up to 40 tasks.
@@ -282,6 +329,8 @@ export function buildPublishingAssignments({
   accounts,
   agents,
   existingAds,
+  requestedCount,
+  automatic = false,
 }: BuildPublishingAssignmentsInput) {
   const weekStart = getWeekStartKey(planStart);
   const days = getPlanDays(planStart, planEnd);
@@ -295,6 +344,9 @@ export function buildPublishingAssignments({
   if (!activeAccounts.length) throw new Error("لا يوجد فرع/حساب حراج نشط بحد يومي أكبر من صفر.");
   if (!activeAgents.length) throw new Error("لا يوجد مندوب نشط.");
   if (!vehicles.length) throw new Error("اختر سيارة واحدة على الأقل.");
+
+  const requested = Math.max(0, Math.floor(Number(requestedCount ?? vehicles.length)));
+  if (!requested) throw new Error("اختر سيارة واحدة على الأقل.");
 
   const periodAds = getPlanAds(existingAds, planStart, planEnd);
   const accountAgents = new Map<string, Agent[]>();
@@ -311,13 +363,21 @@ export function buildPublishingAssignments({
   }
 
   const remainingCapacity = getPlanRemainingCapacity(activeAccounts, existingAds, planStart, planEnd);
-  if (vehicles.length > remainingCapacity) {
-    throw new Error(`عدد السيارات المختارة (${vehicles.length}) أكبر من السعة المتبقية للفترة (${remainingCapacity}).`);
+  if (requested > remainingCapacity) {
+    throw new Error(`عدد السيارات المختارة (${requested}) أكبر من السعة المتبقية للفترة (${remainingCapacity}).`);
   }
 
-  const slots = buildBranchDaySlots(activeAccounts, days, existingAds, vehicles.length);
-  if (slots.length !== vehicles.length) {
+  const slots = buildBranchDaySlots(activeAccounts, days, existingAds, requested);
+  if (slots.length !== requested) {
     throw new Error("تعذر توزيع كل السيارات على الحدود اليومية الحالية للفروع.");
+  }
+
+  const targets: CoverageVehicleTarget[] = automatic
+    ? buildCoverageVehicleTargets(vehicles, existingAds, requested, coverageCycle)
+    : vehicles.slice(0, requested).map((vehicle) => ({ vehicle, coverageCycle }));
+
+  if (targets.length !== requested) {
+    throw new Error("تعذر تجهيز عدد كافٍ من السيارات لملء جدول النشر.");
   }
 
   const planAgentCounts = new Map<string, number>();
@@ -337,7 +397,8 @@ export function buildPublishingAssignments({
   const planId = `plan-${planStart}-${planEnd}-${Date.now()}`;
   const drafts: PublishingAssignmentDraft[] = [];
 
-  vehicles.forEach((vehicle, index) => {
+  targets.forEach((target, index) => {
+    const vehicle = target.vehicle;
     const slot = slots[index];
     const branchAgents = accountAgents.get(slot.account.id) || [];
 
@@ -378,7 +439,7 @@ export function buildPublishingAssignments({
       planStart,
       planEnd,
       scheduledDate: slot.day.key,
-      coverageCycle,
+      coverageCycle: target.coverageCycle,
       planId,
       scheduleOrder: index + 1,
     });

@@ -1,4 +1,4 @@
-MZJ Haraj Manager v1.6.0 CLEAN
+MZJ Haraj Manager v1.6.1 CLEAN
 
 - Haraj account adLimit is DAILY.
 - Plan capacity = daily branch limit x number of plan days.

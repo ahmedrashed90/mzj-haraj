@@ -512,7 +512,7 @@ dd { margin: 0; font-weight: 700; }
 }
 
 
-/* v1.6.0 - prominent automatic publishing window */
+/* v1.6.1 - prominent automatic publishing window */
 .plan-window-hero {
   display: grid;
   grid-template-columns: minmax(0,1.35fr) minmax(420px,.9fr) auto;
@@ -566,7 +566,7 @@ dd { margin: 0; font-weight: 700; }
   .selection-actions > button:last-child { grid-column: 1 / -1; }
 }
 
-/* v1.6.0 - daily branch limits, schedule deletion and PDF print cleanup */
+/* v1.6.1 - daily branch limits, schedule deletion and PDF print cleanup */
 .alert.info { color: #2d628f; background: var(--blue-soft); border: 1px solid #cfe1f1; }
 .schedule-title-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .pdf-sub-summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: -7px 0 12px; padding: 7px 10px; border-radius: 9px; background: #fbf6f2; color: #8d766b; font-size: 9px; }
