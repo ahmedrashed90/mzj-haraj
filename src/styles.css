@@ -462,35 +462,328 @@ dd { margin: 0; font-weight: 700; }
 .branch-panel-metrics span { min-width: 86px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: #fff8f4; color: var(--muted); font-size: 8px; text-align: center; }
 .branch-panel-metrics b { display: block; margin-top: 2px; color: var(--brown); font-size: 14px; }
 
-/* PDF export: hidden A4 pages rendered by html2canvas */
-.pdf-export-sheet { position: fixed; left: -12000px; top: 0; width: 794px; pointer-events: none; z-index: -10; }
-.pdf-page { width: 794px; height: 1123px; padding: 44px 46px 34px; display: flex; flex-direction: column; overflow: hidden; background: #fff; color: #3d241e; font-family: "Tajawal", sans-serif; direction: rtl; }
-.pdf-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-bottom: 18px; border-bottom: 3px solid #7a382d; }
-.pdf-header img { width: 220px; height: auto; object-fit: contain; }
-.pdf-header > div { flex: 1; text-align: right; }
-.pdf-header span { color: #c96f4d; font-size: 13px; font-weight: 800; }
-.pdf-header h1 { margin: 3px 0 0; color: #54261f; font-size: 26px; line-height: 1.25; }
-.pdf-header p { margin: 5px 0 0; color: #8c766d; font-size: 13px; }
-.pdf-summary { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin: 18px 0 16px; }
-.pdf-summary > div { padding: 11px 12px; border: 1px solid #ecd9cf; border-radius: 12px; background: #fff8f4; text-align: center; }
-.pdf-summary span, .pdf-summary strong { display: block; }
-.pdf-summary span { color: #8b766d; font-size: 11px; }
-.pdf-summary strong { margin-top: 3px; color: #6b3026; font-size: 20px; }
-.pdf-table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; overflow: hidden; border: 1px solid #e5d5cd; border-radius: 12px; font-size: 11px; }
-.pdf-table th { padding: 9px 7px; background: #7a382d; color: #fff; font-weight: 800; text-align: center; }
-.pdf-table td { padding: 10px 7px; border-top: 1px solid #eaded8; border-left: 1px solid #f0e5df; text-align: center; vertical-align: middle; line-height: 1.45; word-break: break-word; }
-.pdf-table td:last-child { border-left: 0; }
-.pdf-table th:nth-child(1) { width: 17%; } .pdf-table th:nth-child(2) { width: 16%; } .pdf-table th:nth-child(3) { width: 19%; } .pdf-table th:nth-child(4) { width: 20%; } .pdf-table th:nth-child(5) { width: 10%; } .pdf-table th:nth-child(6) { width: 18%; }
-.pdf-link-placeholder { color: #aa6d55; font-weight: 700; }
-.pdf-done { color: #19704f; font-weight: 800; }
-.pdf-guidance-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
-.pdf-guidance { padding: 14px; border-radius: 14px; background: #f8fbf8; border: 1px solid #d9eadf; }
-.pdf-guidance.follow { background: #fff8f1; border-color: #f0dccb; }
-.pdf-guidance h2 { margin: 0 0 8px; color: #2e674c; font-size: 15px; }
-.pdf-guidance.follow h2 { color: #a45b37; }
-.pdf-guidance p { margin: 5px 0 0; color: #5d514b; font-size: 10px; line-height: 1.55; }
-.pdf-continuation-note { margin-top: 18px; padding: 13px; border-radius: 12px; background: #fff8f4; color: #8e5a47; text-align: center; font-size: 11px; font-weight: 700; }
-.pdf-footer { margin-top: auto; padding-top: 13px; display: flex; justify-content: space-between; gap: 18px; border-top: 1px solid #eaded8; color: #9b877e; font-size: 9px; }
+/* PDF export: clean A4 layout grouped by publishing day */
+.pdf-export-sheet {
+  position: fixed;
+  left: -12000px;
+  top: 0;
+  width: 794px;
+  pointer-events: none;
+  z-index: -10;
+}
+.pdf-page {
+  width: 794px;
+  height: 1123px;
+  padding: 36px 42px 28px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
+  color: #3d241e;
+  font-family: "Tajawal", sans-serif;
+  direction: rtl;
+}
+.pdf-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  padding-bottom: 14px;
+  border-bottom: 3px solid #7a382d;
+}
+.pdf-header img {
+  width: 190px;
+  height: auto;
+  object-fit: contain;
+}
+.pdf-header > div {
+  flex: 1;
+  text-align: right;
+}
+.pdf-header span {
+  color: #cf744f;
+  font-size: 11px;
+  font-weight: 800;
+}
+.pdf-header h1 {
+  margin: 2px 0 0;
+  color: #54261f;
+  font-size: 23px;
+  line-height: 1.3;
+}
+.pdf-header p {
+  margin: 4px 0 0;
+  color: #8c766d;
+  font-size: 11px;
+}
+.pdf-day-banner {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  align-items: center;
+  gap: 18px;
+  margin: 16px 0 12px;
+  padding: 13px 15px;
+  border: 1px solid #ead7cd;
+  border-radius: 14px;
+  background: linear-gradient(135deg,#fffaf7,#f9eee8);
+}
+.pdf-day-banner > div:first-child span,
+.pdf-day-banner > div:first-child h2 {
+  display: block;
+  margin: 0;
+}
+.pdf-day-banner > div:first-child span {
+  color: #a96a51;
+  font-size: 9px;
+  font-weight: 800;
+}
+.pdf-day-banner > div:first-child h2 {
+  margin-top: 3px;
+  color: #57271f;
+  font-size: 18px;
+  line-height: 1.35;
+}
+.pdf-day-metrics {
+  display: grid;
+  grid-template-columns: repeat(3,104px);
+  gap: 7px;
+}
+.pdf-day-metrics span {
+  padding: 7px 8px;
+  border: 1px solid #eadbd3;
+  border-radius: 10px;
+  background: #fff;
+  color: #8b766d;
+  font-size: 8px;
+  text-align: center;
+  white-space: nowrap;
+}
+.pdf-day-metrics b {
+  display: block;
+  margin-top: 2px;
+  color: #6b3026;
+  font-size: 14px;
+}
+.pdf-continuation-strip {
+  margin: -3px 0 10px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  background: #fff6e9;
+  color: #9a682b;
+  font-size: 9px;
+  font-weight: 700;
+  text-align: center;
+}
+.pdf-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  overflow: hidden;
+  border: 1px solid #e5d5cd;
+  border-radius: 12px;
+  font-size: 10px;
+}
+.pdf-table th {
+  padding: 8px 6px;
+  background: #7a382d;
+  color: #fff;
+  font-weight: 800;
+  text-align: center;
+}
+.pdf-table td {
+  padding: 8px 6px;
+  border-top: 1px solid #eaded8;
+  border-left: 1px solid #f0e5df;
+  text-align: center;
+  vertical-align: middle;
+  line-height: 1.35;
+  word-break: break-word;
+}
+.pdf-table td:last-child {
+  border-left: 0;
+}
+.pdf-day-table th:nth-child(1) { width: 18%; }
+.pdf-day-table th:nth-child(2) { width: 18%; }
+.pdf-day-table th:nth-child(3) { width: 31%; }
+.pdf-day-table th:nth-child(4) { width: 10%; }
+.pdf-day-table th:nth-child(5) { width: 23%; }
+.pdf-table-dense td {
+  padding-top: 6px;
+  padding-bottom: 6px;
+  font-size: 9px;
+  line-height: 1.28;
+}
+.pdf-link-placeholder {
+  color: #aa6d55;
+  font-weight: 700;
+}
+.pdf-done {
+  color: #19704f;
+  font-weight: 800;
+}
+.pdf-day-note {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 11px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #fbf6f2;
+  color: #8d766b;
+  font-size: 8px;
+}
+.pdf-day-note b {
+  color: #6b3026;
+}
+.pdf-summary {
+  display: grid;
+  grid-template-columns: repeat(4,1fr);
+  gap: 10px;
+  margin: 18px 0 14px;
+}
+.pdf-summary > div {
+  padding: 11px 12px;
+  border: 1px solid #ecd9cf;
+  border-radius: 12px;
+  background: #fff8f4;
+  text-align: center;
+}
+.pdf-summary span,
+.pdf-summary strong {
+  display: block;
+}
+.pdf-summary span {
+  color: #8b766d;
+  font-size: 10px;
+}
+.pdf-summary strong {
+  margin-top: 3px;
+  color: #6b3026;
+  font-size: 20px;
+}
+.pdf-summary-final {
+  margin-bottom: 10px;
+}
+.pdf-final-day-summary {
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 8px;
+  margin-bottom: 17px;
+}
+.pdf-final-day-summary > div {
+  padding: 8px;
+  border: 1px solid #eadbd3;
+  border-radius: 10px;
+  background: #fff;
+  text-align: center;
+}
+.pdf-final-day-summary span,
+.pdf-final-day-summary b {
+  display: block;
+}
+.pdf-final-day-summary span {
+  color: #8b766d;
+  font-size: 8px;
+}
+.pdf-final-day-summary b {
+  margin-top: 2px;
+  color: #6b3026;
+  font-size: 13px;
+}
+.pdf-guidance-heading {
+  margin-top: 2px;
+  padding: 13px 15px;
+  border-right: 4px solid #7a382d;
+  background: #fffaf7;
+}
+.pdf-guidance-heading span,
+.pdf-guidance-heading h2,
+.pdf-guidance-heading p {
+  display: block;
+  margin: 0;
+}
+.pdf-guidance-heading span {
+  color: #b46e50;
+  font-size: 9px;
+  font-weight: 800;
+}
+.pdf-guidance-heading h2 {
+  margin-top: 2px;
+  color: #54261f;
+  font-size: 18px;
+}
+.pdf-guidance-heading p {
+  margin-top: 4px;
+  color: #8c766d;
+  font-size: 9px;
+  line-height: 1.6;
+}
+.pdf-guidance-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 16px;
+}
+.pdf-guidance-grid-final {
+  min-height: 330px;
+}
+.pdf-guidance {
+  padding: 18px;
+  border-radius: 15px;
+  background: #f7fbf8;
+  border: 1px solid #d8eadf;
+}
+.pdf-guidance.follow {
+  background: #fff8f1;
+  border-color: #f0dccb;
+}
+.pdf-guidance h2 {
+  margin: 0 0 12px;
+  color: #2e674c;
+  font-size: 16px;
+}
+.pdf-guidance.follow h2 {
+  color: #a45b37;
+}
+.pdf-guidance p {
+  margin: 8px 0 0;
+  color: #5d514b;
+  font-size: 10px;
+  line-height: 1.75;
+}
+.pdf-final-callout {
+  margin-top: 16px;
+  padding: 13px 15px;
+  border: 1px solid #ecd9cf;
+  border-radius: 12px;
+  background: #fffaf7;
+  text-align: center;
+}
+.pdf-final-callout strong,
+.pdf-final-callout span {
+  display: block;
+}
+.pdf-final-callout strong {
+  color: #6b3026;
+  font-size: 13px;
+}
+.pdf-final-callout span {
+  margin-top: 3px;
+  color: #8d766b;
+  font-size: 9px;
+}
+.pdf-footer {
+  margin-top: auto;
+  padding-top: 11px;
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  border-top: 1px solid #eaded8;
+  color: #9b877e;
+  font-size: 8px;
+}
+
 
 @media (max-width: 1050px) {
   .branch-export-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
@@ -512,7 +805,7 @@ dd { margin: 0; font-weight: 700; }
 }
 
 
-/* v1.6.3 - prominent automatic publishing window */
+/* v1.6.4 - prominent automatic publishing window */
 .plan-window-hero {
   display: grid;
   grid-template-columns: minmax(0,1.35fr) minmax(420px,.9fr) auto;
@@ -566,11 +859,9 @@ dd { margin: 0; font-weight: 700; }
   .selection-actions > button:last-child { grid-column: 1 / -1; }
 }
 
-/* v1.6.3 - daily branch limits, schedule deletion and PDF print cleanup */
+/* v1.6.4 - daily branch limits, schedule deletion and PDF print cleanup */
 .alert.info { color: #2d628f; background: var(--blue-soft); border: 1px solid #cfe1f1; }
 .schedule-title-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-.pdf-sub-summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: -7px 0 12px; padding: 7px 10px; border-radius: 9px; background: #fbf6f2; color: #8d766b; font-size: 9px; }
-.pdf-sub-summary b { color: #6b3026; }
 
 @media (max-width: 760px) {
   .schedule-title-actions { width: 100%; justify-content: stretch; }
@@ -578,7 +869,7 @@ dd { margin: 0; font-weight: 700; }
   .schedule-title-actions .week-switcher { flex: 1; }
 }
 
-/* v1.6.3 - daily branch limit distribution clarity */
+/* v1.6.4 - daily branch limit distribution clarity */
 .preview-rule-box { display: block; }
 .preview-rule-box > p { margin: 7px 0 0; color: var(--muted); font-size: 9px; line-height: 1.7; }
 .preview-rule-box > p:first-of-type { margin-top: 0; color: var(--text); }
@@ -611,9 +902,6 @@ dd { margin: 0; font-weight: 700; }
 .day-branch-summary { display: flex; flex-wrap: wrap; gap: 5px; padding: 8px 10px 0; }
 .day-branch-summary > span { display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; border-radius: 999px; border: 1px solid #eadbd3; background: #fff8f4; color: var(--muted); font-size: 8px; }
 .day-branch-summary b { color: var(--brown); font-size: 9px; }
-.pdf-day-summary { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 7px; margin: -4px 0 12px; }
-.pdf-day-summary > span { padding: 6px 8px; border: 1px solid #eadbd3; border-radius: 9px; background: #fffaf7; color: #8b766d; font-size: 8px; text-align: center; }
-.pdf-day-summary b { display: block; margin-top: 2px; color: #6b3026; font-size: 13px; }
 @media (max-width: 700px) {
   .daily-distribution-row { grid-template-columns: 84px 70px minmax(0,1fr); gap: 6px; }
   .daily-distribution-agents > span { width: 100%; justify-content: space-between; }

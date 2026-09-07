@@ -229,7 +229,7 @@ export function SchedulePage() {
     </section>
 
     {byAccount.length ? <section className="panel branch-share-panel">
-      <div className="panel-head"><div><h2>إرسال جدول كل فرع</h2><p>حمّل PDF خاص بالفرع وأرسله لمدير الفرع. الملف يحتوي الجدول وسياسات النشر ومتابعة الرسائل والتعليقات والقيود.</p></div></div>
+      <div className="panel-head"><div><h2>إرسال جدول كل فرع</h2><p>حمّل PDF خاص بالفرع وأرسله لمدير الفرع. كل يوم يظهر بجدوله كاملًا، والسياسات والمتابعة موجودة مرة واحدة في آخر صفحة.</p></div></div>
       <div className="branch-export-grid">{byAccount.map(({ account, rows, activeAgents, periodCapacity }) => <article className="branch-export-card" key={account.id}>
         <div><span>الفرع</span><strong>{account.name}</strong><small>{activeAgents} مندوب نشط</small></div>
         <div className="branch-export-numbers"><span>الحد اليومي <b>{account.adLimit}</b></span><span>حد الفترة <b>{periodCapacity}</b></span><span>في الجدول <b>{rows.length}</b></span></div>
