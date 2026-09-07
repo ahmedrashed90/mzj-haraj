@@ -1,13 +1,14 @@
-MZJ Haraj Manager v1.3.0
+MZJ Haraj Manager v1.5.0 CLEAN
 
-- Vercel + GitHub + Firebase Spark only
-- Firebase Auth: admin@mzj.com only
-- Firestore: Haraj accounts, agents, weekly assignments, links and statuses
-- MZJ stock source: read-only through /api/stock
-- Stock filter: available_for_sale / متاح للبيع
-- Stock identity: car_name + statement + model_year
-- Weekly publishing schedule with automatic day/account/agent distribution
-- Company-wide agent distribution (no branch/account quota per agent)
-- Flexible Haraj account limits; lowering a limit never blocks or deletes existing tasks
-- Coverage cycles: no vehicle group repeats until all current available stock groups have been scheduled
-- Tajawal font and refreshed professional RTL UI
+- Automatic publishing window visible before schedule creation.
+- Non-Friday: tomorrow -> Friday.
+- Friday: next Saturday -> next Friday.
+- One-click automatic plan preparation up to remaining branch capacity.
+- Branch ad limits are flexible and independent from branch representative count.
+- Assignments never cross branches: branch ads -> active reps of same branch only.
+- Leave/inactive reps excluded.
+- Balanced branch rep/day allocation.
+- Stock coverage prevents repetition until current stock is covered.
+- Branch PDF includes MZJ branding, weekly schedule, Haraj policies, messages/comments/restriction follow-up.
+- Tajawal font and MZJ brown/copper UI.
+- api/stock.ts unchanged and read-only.
