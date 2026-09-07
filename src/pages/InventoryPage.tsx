@@ -233,17 +233,27 @@ export function InventoryPage() {
       }));
   }, [preview.rows, accounts, agents, ads, planStart, planEnd]);
 
-  const previewByAgent = useMemo(() => {
-    const map = new Map<string, number>();
-    preview.rows.forEach((ad) => map.set(ad.agentId, (map.get(ad.agentId) || 0) + 1));
-    return [...map.entries()]
-      .map(([agentId, count]) => ({ agent: agents.find((item) => item.id === agentId), count }))
-      .sort(
-        (a, b) =>
-          b.count - a.count ||
-          (a.agent?.name || "").localeCompare(b.agent?.name || "", "ar"),
-      );
-  }, [preview.rows, agents]);
+  const previewDailyDistribution = useMemo(() => {
+    if (!planStart || !planEnd) return [];
+    const days = getPlanDays(planStart, planEnd);
+    return accounts
+      .filter((account) => account.active && Number(account.adLimit || 0) > 0)
+      .map((account) => ({
+        account,
+        days: days.map((day) => {
+          const dayRows = preview.rows.filter((ad) => ad.accountId === account.id && ad.scheduledDate === day.key);
+          const byAgent = new Map<string, number>();
+          dayRows.forEach((ad) => byAgent.set(ad.agentId, (byAgent.get(ad.agentId) || 0) + 1));
+          const agentRows = [...byAgent.entries()]
+            .map(([agentId, count]) => ({
+              agent: agents.find((item) => item.id === agentId),
+              count,
+            }))
+            .sort((a, b) => b.count - a.count || (a.agent?.name || "").localeCompare(b.agent?.name || "", "ar"));
+          return { day, total: dayRows.length, agentRows };
+        }),
+      }));
+  }, [preview.rows, accounts, agents, planStart, planEnd]);
 
   async function createPlan() {
     setError("");
@@ -391,21 +401,41 @@ export function InventoryPage() {
         {preview.error ? <div className="alert error"><WarningCircle size={18} />{preview.error}</div> : <>
           <div className="preview-columns">
             <div className="preview-box">
-              <h3>توزيع الفروع</h3>
+              <h3>توزيع الفروع خلال الفترة</h3>
               {previewByAccount.map(({ account, count, used, capacity, reps }) => <div key={account.id}>
-                <span>{account.name}<small>حد يومي {account.adLimit} × {periodDays} أيام = {capacity} · {reps} مندوب نشط · موجود مسبقًا {used}</small></span>
-                <b>+{count} / {capacity}</b>
+                <span>{account.name}<small>الحد اليومي للفرع {account.adLimit} · {periodDays} أيام = {capacity} تكليف للفترة · {reps} مندوب نشط</small></span>
+                <b>{count} تكليف</b>
               </div>)}
             </div>
-            <div className="preview-box">
-              <h3>توزيع المناديب</h3>
-              {previewByAgent.map(({ agent, count }) => <div key={agent?.id || "missing"}>
-                <span>{agent?.name || "مندوب غير موجود"}<small>{accounts.find((a) => a.id === agent?.accountId)?.name || "بدون فرع"}</small></span>
-                <b>{count}</b>
-              </div>)}
+            <div className="preview-box preview-rule-box">
+              <h3>قاعدة التوزيع</h3>
+              <p><strong>حد الفرع اليومي لا يتكرر على كل مندوب.</strong></p>
+              <p>النظام يأخذ حد الفرع مرة واحدة في اليوم ثم يقسمه على المناديب النشطين في نفس الفرع بالتساوي قدر الإمكان.</p>
+              <p>مثال: فرع حدّه 14 وفيه 4 مناديب → مجموع اليوم 14 فقط، والتوزيع يكون 4 + 4 + 3 + 3 مع تدوير الزيادة بين الأيام.</p>
             </div>
           </div>
-          <div className="preview-note"><CheckCircle size={18} />كل فرع يأخذ حدّه اليومي في أيام الفترة، وكل تكليف يذهب فقط إلى مندوب نشط من نفس الفرع. السيارات لا تتكرر قبل تغطية باقي الاستوك.</div>
+
+          <div className="daily-distribution-preview">
+            <div className="daily-distribution-head">
+              <div><h3>التوزيع اليومي على المناديب</h3><p>الأرقام التالية لكل يوم، حتى يكون واضحًا أن الحد يخص الفرع كله وليس كل مندوب.</p></div>
+            </div>
+            <div className="daily-distribution-branches">
+              {previewDailyDistribution.map(({ account, days }) => <section className="daily-distribution-branch" key={account.id}>
+                <header><div><strong>{account.name}</strong><span>حد الفرع اليومي: {account.adLimit}</span></div><b>{account.adLimit} إعلان / يوم</b></header>
+                <div className="daily-distribution-rows">
+                  {days.map(({ day, total, agentRows }) => <div className="daily-distribution-row" key={`${account.id}-${day.key}`}>
+                    <div className="daily-distribution-day"><strong>{day.name}</strong><span>{day.key}</span></div>
+                    <div className="daily-distribution-total"><span>إجمالي الفرع</span><b>{total}</b></div>
+                    <div className="daily-distribution-agents">
+                      {agentRows.length ? agentRows.map(({ agent, count }) => <span key={agent?.id || `${day.key}-missing`}><b>{agent?.name || "مندوب غير موجود"}</b><em>{count} إعلان</em></span>) : <small>لا توجد تكليفات</small>}
+                    </div>
+                  </div>)}
+                </div>
+              </section>)}
+            </div>
+          </div>
+
+          <div className="preview-note"><CheckCircle size={18} />كل يوم يُنشأ للفرع عدد تكليفات يساوي حدّه اليومي مرة واحدة فقط، ثم تُقسم هذه التكليفات على مناديب الفرع النشطين. السيارات لا تتكرر قبل تغطية باقي الاستوك.</div>
         </>}
 
         <div className="modal-actions">

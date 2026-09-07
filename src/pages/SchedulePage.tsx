@@ -131,11 +131,60 @@ export function SchedulePage() {
     const printStyle = popup.document.createElement("style");
     printStyle.textContent = `
       @page { size: A4 portrait; margin: 0; }
-      html, body { margin: 0 !important; padding: 0 !important; width: 210mm !important; background: #fff !important; }
-      body { overflow: visible !important; }
-      .pdf-export-sheet { position: static !important; inset: auto !important; left: auto !important; top: auto !important; width: 210mm !important; margin: 0 !important; pointer-events: auto !important; z-index: auto !important; }
-      .pdf-page { width: 210mm !important; height: 296mm !important; min-height: 0 !important; margin: 0 !important; box-sizing: border-box !important; overflow: hidden !important; page-break-after: auto !important; break-after: auto !important; page-break-before: auto !important; break-before: auto !important; }
-      .pdf-page + .pdf-page { page-break-before: always !important; break-before: page !important; }
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 794px !important;
+        min-width: 794px !important;
+        background: #fff !important;
+        overflow: visible !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      * { box-sizing: border-box !important; }
+      body {
+        display: block !important;
+      }
+      .pdf-export-sheet {
+        position: static !important;
+        inset: auto !important;
+        left: auto !important;
+        top: auto !important;
+        width: 794px !important;
+        min-width: 794px !important;
+        margin: 0 !important;
+        pointer-events: auto !important;
+        z-index: auto !important;
+      }
+      .pdf-page {
+        width: 794px !important;
+        min-width: 794px !important;
+        max-width: 794px !important;
+        height: 1123px !important;
+        min-height: 1123px !important;
+        max-height: 1123px !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+        page-break-after: always !important;
+        break-after: page !important;
+        page-break-before: auto !important;
+        break-before: auto !important;
+        transform: none !important;
+        zoom: 1 !important;
+      }
+      .pdf-page:last-child {
+        page-break-after: auto !important;
+        break-after: auto !important;
+      }
+      .pdf-page + .pdf-page {
+        page-break-before: always !important;
+        break-before: page !important;
+      }
+      img { max-width: 100% !important; }
+      table { page-break-inside: avoid !important; }
     `;
     popup.document.head.appendChild(printStyle);
     popup.document.body.innerHTML = root.outerHTML;
@@ -194,8 +243,12 @@ export function SchedulePage() {
       {days.map((day) => {
         const dayAds = weekAds.filter((ad) => ad.scheduledDate === day.key);
         const isToday = day.key === today;
+        const branchCounts = accounts
+          .map((account) => ({ account, count: dayAds.filter((ad) => ad.accountId === account.id).length }))
+          .filter((row) => row.count > 0);
         return <article className={`day-card ${isToday ? "today" : ""}`} key={day.key}>
           <header><div><span>{day.name}</span><strong>{formatDateArabic(day.key, { day: "numeric", month: "short" })}</strong></div><b>{dayAds.length}</b></header>
+          {branchCounts.length ? <div className="day-branch-summary">{branchCounts.map(({ account, count }) => <span key={`${day.key}-${account.id}`}>{account.name}<b>{count}</b></span>)}</div> : null}
           <div className="day-tasks">
             {!dayAds.length ? <div className="day-empty">لا توجد إعلانات مجدولة</div> : dayAds.map((ad) => {
               const late = isOverdue(ad, today);

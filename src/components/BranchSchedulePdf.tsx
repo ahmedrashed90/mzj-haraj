@@ -47,9 +47,14 @@ export function BranchSchedulePdf({
   const pages = chunks(ads);
   if (!pages.length) return null;
 
-  const planDays = getPlanDays(planStart, planEnd).length;
+  const planDayRows = getPlanDays(planStart, planEnd);
+  const planDays = planDayRows.length;
   const periodCapacity = Number(account.adLimit || 0) * planDays;
   const activeBranchAgents = agents.filter((agent) => agent.active && agent.accountId === account.id).length;
+  const dailyCounts = planDayRows.map((day) => ({
+    day,
+    count: ads.filter((ad) => ad.scheduledDate === day.key).length,
+  }));
 
   return <div className="pdf-export-sheet" data-branch-id={account.id} aria-hidden="true">
     {pages.map((pageAds, pageIndex) => <section className="pdf-page" data-pdf-page key={`${account.id}-${pageIndex}`}>
@@ -71,7 +76,12 @@ export function BranchSchedulePdf({
 
       <div className="pdf-sub-summary">
         <span>المناديب النشطون في الفرع: <b>{activeBranchAgents}</b></span>
+        <span>الحد اليومي للفرع كله: <b>{account.adLimit}</b> إعلان فقط</span>
         <span>صفحة <b>{pageIndex + 1}</b> من <b>{pages.length}</b></span>
+      </div>
+
+      <div className="pdf-day-summary">
+        {dailyCounts.map(({ day, count }) => <span key={`${account.id}-${pageIndex}-${day.key}`}>{day.name}<b>{count} إعلان</b></span>)}
       </div>
 
       <table className="pdf-table">

@@ -1,8 +1,10 @@
-MZJ Haraj Manager v1.6.1 CLEAN
+MZJ Haraj Manager v1.6.3 CLEAN
 
 - Haraj account adLimit is DAILY.
 - Plan capacity = daily branch limit x number of plan days.
-- Branch assignments stay inside the same branch and use active reps only.
+- Each branch daily limit is applied ONCE per day, then split across active reps in that branch.
+- Example: 14 daily + 4 reps = 14 total that day, normally 4+4+3+3, not 14 per rep.
+- Preview, schedule board and branch PDF expose per-day branch counts explicitly.
 - Non-Friday plan: tomorrow through Friday.
 - Friday plan: next Saturday through next Friday.
 - Vehicles whose location/place value is Agency/الوكالة are excluded from Haraj stock.
