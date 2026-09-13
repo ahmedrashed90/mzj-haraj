@@ -17,6 +17,8 @@ export function DashboardPage() {
   const published = weekAds.filter(isPublished).length; const pending = weekAds.length - published; const overdue = weekAds.filter((ad) => isOverdue(ad, today)).length;
   const todayAds = weekAds.filter((ad) => ad.scheduledDate === today);
   const branchById = new Map(accounts.map((b) => [b.id, b])); const agentById = new Map(agents.map((a) => [a.id, a]));
+  const activeBranchIds = new Set(accounts.filter((branch) => branch.active !== false).map((branch) => branch.id));
+  const activeAgentCount = agents.filter((a) => a.active && a.accountId && activeBranchIds.has(a.accountId)).length;
   const recent = useMemo(() => [...ads].sort((a, b) => String(b.updatedAt || b.assignedAt || "").localeCompare(String(a.updatedAt || a.assignedAt || ""))).slice(0, 8), [ads]);
   async function refreshAll() { await Promise.allSettled([refreshStock(), refreshWebsiteCars()]); }
 
@@ -32,14 +34,14 @@ export function DashboardPage() {
       <StatCard label="تم النشر" value={published} hint="استلمنا الرابط" tone="good" />
       <StatCard label="بانتظار النشر" value={pending} hint="بدون رابط حتى الآن" tone={pending ? "warn" : "good"} />
       <StatCard label="متأخر" value={overdue} hint="موعده عدى" tone={overdue ? "danger" : "good"} />
-      <StatCard label="المناديب النشطون" value={agents.filter((a) => a.active && a.accountId).length} hint="كل الفروع" />
+      <StatCard label="المناديب النشطون" value={activeAgentCount} hint="داخل الفروع النشطة" />
       <StatCard label="متاح للبيع" value={stockTotalVehicles} hint={`${stock.length} سيارة/فئة خارج الوكالة`} tone="info" />
       <StatCard label="متاح بدون تكرار" value={coverage.eligibleRows.length} hint={`دورة ${coverage.cycle}`} tone="warn" />
       <StatCard label="مواصفات الموقع" value={websiteCars.length} hint={websiteCarsError ? "الربط غير مكتمل" : "جاهزة لصيغ الإعلانات"} tone={websiteCarsError ? "danger" : "good"} />
     </section>
 
     <section className="dashboard-columns">
-      <div className="panel"><div className="panel-head"><div><h2>حساب النشر الحالي</h2><p>كل التكليفات تستخدم نفس حساب حراج.</p></div></div><div className="single-account-dashboard"><span>حساب حراج</span><strong>{publishingSettings.accountName || "غير محدد"}</strong><div><span>الحد اليومي <b>{publishingSettings.dailyLimit || 0}</b></span><span>سعة الفترة <b>{capacity}</b></span><span>المجدول <b>{weekAds.length}</b></span></div><Progress value={weekAds.length} max={Math.max(capacity, weekAds.length || 1)} /></div></div>
+      <div className="panel"><div className="panel-head"><div><h2>حساب النشر الحالي</h2><p>حساب حراج واحد، والحد اليومي يتقسم على الفروع ثم على مناديب كل فرع.</p></div></div><div className="single-account-dashboard"><span>حساب حراج</span><strong>{publishingSettings.accountName || "غير محدد"}</strong><div><span>الحد اليومي <b>{publishingSettings.dailyLimit || 0}</b></span><span>سعة الفترة <b>{capacity}</b></span><span>المجدول <b>{weekAds.length}</b></span></div><Progress value={weekAds.length} max={Math.max(capacity, weekAds.length || 1)} /></div></div>
       <div className="panel"><div className="panel-head"><div><h2>تغطية الاستوك</h2><p>{stockFetchedAt ? `آخر قراءة: ${new Date(stockFetchedAt).toLocaleString("ar-SA-u-nu-latn")}` : "لم تتم القراءة بعد"}</p></div></div>{!stock.length ? <EmptyState title="لا توجد بيانات" text="بانتظار قراءة الاستوك." /> : <><div className="coverage-big"><strong>{coverage.coveredCount}</strong><span>من {stock.length} سيارة/فئة في الدورة {coverage.cycle}</span></div><Progress value={coverage.coveredCount} max={stock.length} /><div className="coverage-caption"><span>تمت تغطيته: {coverage.coveredCount}</span><span>متبقي: {coverage.eligibleRows.length}</span></div></>}</div>
     </section>
 

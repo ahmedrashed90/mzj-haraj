@@ -1,4 +1,4 @@
-import type { Agent, HarajAd, PublishingSettings, StockGroup } from "./types";
+import type { Agent, HarajAccount, HarajAd, PublishingSettings, StockGroup } from "./types";
 
 const DAY_NAME_BY_JS_INDEX = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"] as const;
 export const WEEK_DAY_NAMES = ["السبت", "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة"] as const;
@@ -62,7 +62,10 @@ export function getCoverageState(stock: StockGroup[], ads: HarajAd[]) {
 export function isPublished(ad: HarajAd) { return Boolean(String(ad.url || "").trim()) || ad.status === "published" || ad.status === "approved"; }
 export function isPending(ad: HarajAd) { return !isPublished(ad) && ad.status !== "closed"; }
 export function isOverdue(ad: HarajAd, today = dateKey(new Date())) { return Boolean(ad.scheduledDate && ad.scheduledDate < today && isPending(ad)); }
-export function isAgentAvailable(agent: Agent) { return Boolean(agent.active && String(agent.accountId || "").trim()); }
+export function isAgentAvailable(agent: Agent, activeBranchIds?: Set<string>) {
+  const branchId = String(agent.accountId || "").trim();
+  return Boolean(agent.active && branchId && (!activeBranchIds || activeBranchIds.has(branchId)));
+}
 export function adBranchId(ad: HarajAd) { return String(ad.branchId || ad.accountId || ""); }
 
 export type PublishingAssignmentDraft = Omit<HarajAd, "id" | "assignedAt" | "updatedAt" | "publishedAt">;
@@ -79,23 +82,145 @@ export function getPlanWindowFromAds(weekAds: HarajAd[], weekStart: string) {
   return { planStart: starts[0] || weekStart, planEnd: ends[ends.length - 1] || getWeekEndKey(weekStart) };
 }
 
+type BranchPool = {
+  branch: HarajAccount;
+  agents: Agent[];
+};
+
 type BuildInput = {
   vehicles: StockGroup[];
   planStart: string;
   planEnd: string;
   coverageCycle: number;
   settings: PublishingSettings;
+  branches: HarajAccount[];
   agents: Agent[];
   existingAds: HarajAd[];
   requestedCount?: number;
 };
 
+function buildBranchPools(branches: HarajAccount[], agents: Agent[]) {
+  const activeBranches = branches.filter((branch) => branch.active !== false).sort((a, b) => a.name.localeCompare(b.name, "ar"));
+  const activeBranchIds = new Set(activeBranches.map((branch) => branch.id));
+  const eligibleAgents = agents.filter((agent) => isAgentAvailable(agent, activeBranchIds));
+  return activeBranches
+    .map((branch): BranchPool => ({
+      branch,
+      agents: eligibleAgents.filter((agent) => agent.accountId === branch.id).sort((a, b) => a.name.localeCompare(b.name, "ar")),
+    }))
+    .filter((pool) => pool.agents.length > 0);
+}
+
 /**
- * One Haraj account for the whole company. The account daily limit is shared by
- * all active reps across every branch. Branch is organization/reporting only.
- * Each unique vehicle group appears at most once in one generated plan.
+ * Split a daily total between branches according to the number of active reps
+ * in every branch. The remainder rotates by day so the same branch does not
+ * always receive the extra slot when fractions are tied.
  */
-export function buildPublishingAssignments({ vehicles, planStart, planEnd, coverageCycle, settings, agents, existingAds, requestedCount }: BuildInput) {
+function weightedBranchTargets(total: number, pools: BranchPool[], daySeed: number) {
+  const target = new Map<string, number>();
+  pools.forEach((pool) => target.set(pool.branch.id, 0));
+  if (total <= 0 || !pools.length) return target;
+
+  const totalWeight = pools.reduce((sum, pool) => sum + pool.agents.length, 0);
+  if (!totalWeight) return target;
+
+  const rows = pools.map((pool, index) => {
+    const exact = (total * pool.agents.length) / totalWeight;
+    const base = Math.floor(exact);
+    target.set(pool.branch.id, base);
+    return { pool, index, fraction: exact - base };
+  });
+
+  let left = total - [...target.values()].reduce((sum, value) => sum + value, 0);
+  const rotatedRank = (index: number) => (index - (daySeed % Math.max(1, pools.length)) + pools.length) % pools.length;
+  rows.sort((a, b) => b.fraction - a.fraction || rotatedRank(a.index) - rotatedRank(b.index) || a.pool.branch.name.localeCompare(b.pool.branch.name, "ar"));
+  let cursor = 0;
+  while (left > 0 && rows.length) {
+    const row = rows[cursor % rows.length];
+    target.set(row.pool.branch.id, (target.get(row.pool.branch.id) || 0) + 1);
+    left -= 1;
+    cursor += 1;
+  }
+  return target;
+}
+
+function makeBranchSlots(
+  dayKey: string,
+  dayIndex: number,
+  addCount: number,
+  pools: BranchPool[],
+  existingAds: HarajAd[],
+  periodBranchCounts: Map<string, number>,
+  historyBranchCounts: Map<string, number>,
+) {
+  if (addCount <= 0) return [] as string[];
+  const currentDayRows = existingAds.filter((ad) => ad.status !== "closed" && ad.scheduledDate === dayKey);
+  const existingByBranch = new Map<string, number>();
+  currentDayRows.forEach((ad) => {
+    const branchId = adBranchId(ad);
+    if (branchId) existingByBranch.set(branchId, (existingByBranch.get(branchId) || 0) + 1);
+  });
+
+  const activeExistingTotal = pools.reduce((sum, pool) => sum + (existingByBranch.get(pool.branch.id) || 0), 0);
+  const finalActiveTotal = activeExistingTotal + addCount;
+  const finalTargets = weightedBranchTargets(finalActiveTotal, pools, dayIndex);
+  const quotas = new Map<string, number>();
+  pools.forEach((pool) => {
+    const existing = existingByBranch.get(pool.branch.id) || 0;
+    quotas.set(pool.branch.id, Math.max(0, (finalTargets.get(pool.branch.id) || 0) - existing));
+  });
+
+  let assigned = [...quotas.values()].reduce((sum, value) => sum + value, 0);
+  // Existing rows may already be above their proportional target. Any remaining
+  // new slots are given to the least-loaded branch per active rep.
+  while (assigned < addCount) {
+    const chosen = pools.map((pool) => {
+      const id = pool.branch.id;
+      const dayUsed = (existingByBranch.get(id) || 0) + (quotas.get(id) || 0);
+      const periodUsed = (periodBranchCounts.get(id) || 0) + (quotas.get(id) || 0);
+      const historyUsed = historyBranchCounts.get(id) || 0;
+      return {
+        pool,
+        dayLoad: dayUsed / pool.agents.length,
+        periodLoad: periodUsed / pool.agents.length,
+        historyLoad: historyUsed / pool.agents.length,
+      };
+    }).sort((a, b) => a.dayLoad - b.dayLoad || a.periodLoad - b.periodLoad || a.historyLoad - b.historyLoad || a.pool.branch.name.localeCompare(b.pool.branch.name, "ar"))[0];
+    quotas.set(chosen.pool.branch.id, (quotas.get(chosen.pool.branch.id) || 0) + 1);
+    assigned += 1;
+  }
+
+  // Interleave branch slots instead of placing one whole branch block first.
+  const slots: string[] = [];
+  const remaining = new Map(quotas);
+  let cursor = dayIndex % Math.max(1, pools.length);
+  while (slots.length < addCount) {
+    let added = false;
+    for (let step = 0; step < pools.length; step += 1) {
+      const pool = pools[(cursor + step) % pools.length];
+      const left = remaining.get(pool.branch.id) || 0;
+      if (left <= 0) continue;
+      slots.push(pool.branch.id);
+      remaining.set(pool.branch.id, left - 1);
+      added = true;
+      if (slots.length >= addCount) break;
+    }
+    if (!added) break;
+    cursor = (cursor + 1) % Math.max(1, pools.length);
+  }
+  return slots;
+}
+
+/**
+ * Publishing model v1.8:
+ * - One Haraj account owns the company daily publishing limit.
+ * - Every day is filled up to that limit before moving to the next day.
+ * - The day's ads are split between active branches according to the number of
+ *   active reps in each branch.
+ * - Each branch share is then balanced between reps of that branch only.
+ * - A vehicle group is never repeated inside the generated plan.
+ */
+export function buildPublishingAssignments({ vehicles, planStart, planEnd, coverageCycle, settings, branches, agents, existingAds, requestedCount }: BuildInput) {
   const days = getPlanDays(planStart, planEnd);
   if (!days.length) throw new Error("فترة جدول النشر غير صحيحة.");
   const accountName = String(settings.accountName || "").trim();
@@ -103,8 +228,9 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
   if (!accountName) throw new Error("اكتب اسم حساب حراج المستخدم حاليًا من صفحة إعداد النشر والمناديب.");
   if (!dailyLimit) throw new Error("حد حساب حراج اليومي يجب أن يكون أكبر من صفر.");
 
-  const activeAgents = agents.filter(isAgentAvailable).sort((a, b) => a.name.localeCompare(b.name, "ar"));
-  if (!activeAgents.length) throw new Error("لا يوجد مندوب نشط.");
+  const branchPools = buildBranchPools(branches, agents);
+  if (!branchPools.length) throw new Error("لا يوجد فرع نشط به مناديب نشطون للتوزيع.");
+  const activeAgents = branchPools.flatMap((pool) => pool.agents);
 
   const uniqueVehicleMap = new Map<string, StockGroup>();
   vehicles.forEach((row) => { if (row?.key && !uniqueVehicleMap.has(row.key)) uniqueVehicleMap.set(row.key, row); });
@@ -114,32 +240,20 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
   const remainingByDay = new Map<string, number>();
   days.forEach((day) => remainingByDay.set(day.key, Math.max(0, dailyLimit - getPublishingDailyUsage(existingAds, day.key))));
   const totalRemaining = [...remainingByDay.values()].reduce((sum, value) => sum + value, 0);
-  const requested = Math.min(
-    uniqueVehicles.length,
-    totalRemaining,
-    Math.max(0, Math.floor(Number(requestedCount ?? uniqueVehicles.length))),
-  );
+  const requested = Math.min(uniqueVehicles.length, totalRemaining, Math.max(0, Math.floor(Number(requestedCount ?? uniqueVehicles.length))));
   if (!requested) throw new Error("لا توجد سعة متبقية أو سيارات جديدة لإنشاء الجدول.");
 
-  // Round-robin over days so a partial plan is spread across the period, while
-  // never exceeding the single account's daily limit.
-  const daySlots: Array<{ key: string; name: string }> = [];
-  let round = 0;
-  while (daySlots.length < requested) {
-    let added = false;
-    for (const day of days) {
-      const remaining = remainingByDay.get(day.key) || 0;
-      if (round < remaining) { daySlots.push(day); added = true; if (daySlots.length >= requested) break; }
-    }
-    if (!added) break;
-    round += 1;
-  }
-  if (daySlots.length !== requested) throw new Error("تعذر توزيع التكليفات داخل حد حساب حراج اليومي.");
-
   const periodAds = getPlanAds(existingAds, planStart, planEnd);
-  const dayAgentCounts = new Map<string, number>();
+  const periodBranchCounts = new Map<string, number>();
+  const historyBranchCounts = new Map<string, number>();
   const periodAgentCounts = new Map<string, number>();
   const historyAgentCounts = new Map<string, number>();
+  const dayAgentCounts = new Map<string, number>();
+
+  branchPools.forEach((pool) => {
+    periodBranchCounts.set(pool.branch.id, periodAds.filter((ad) => adBranchId(ad) === pool.branch.id).length);
+    historyBranchCounts.set(pool.branch.id, existingAds.filter((ad) => adBranchId(ad) === pool.branch.id).length);
+  });
   activeAgents.forEach((agent) => {
     periodAgentCounts.set(agent.id, periodAds.filter((ad) => ad.agentId === agent.id).length);
     historyAgentCounts.set(agent.id, existingAds.filter((ad) => ad.agentId === agent.id).length);
@@ -150,22 +264,43 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
     dayAgentCounts.set(key, (dayAgentCounts.get(key) || 0) + 1);
   });
 
+  // Fill the first publishing day to its remaining daily capacity, then move to
+  // the next day. This keeps the meaning of "daily limit" literal.
+  const slots: Array<{ day: (typeof days)[number]; branchId: string }> = [];
+  let stillNeeded = requested;
+  for (const day of days) {
+    if (stillNeeded <= 0) break;
+    const dayRemaining = remainingByDay.get(day.key) || 0;
+    if (dayRemaining <= 0) continue;
+    const addCount = Math.min(stillNeeded, dayRemaining);
+    const branchSlots = makeBranchSlots(day.key, day.index, addCount, branchPools, existingAds, periodBranchCounts, historyBranchCounts);
+    if (branchSlots.length !== addCount) throw new Error(`تعذر توزيع إعلانات ${day.name} على الفروع.`);
+    branchSlots.forEach((branchId) => slots.push({ day, branchId }));
+    branchSlots.forEach((branchId) => periodBranchCounts.set(branchId, (periodBranchCounts.get(branchId) || 0) + 1));
+    stillNeeded -= addCount;
+  }
+  if (slots.length !== requested) throw new Error("تعذر توزيع التكليفات داخل حد حساب حراج اليومي.");
+
+  const poolByBranch = new Map(branchPools.map((pool) => [pool.branch.id, pool]));
   const weekStart = getWeekStartKey(planStart);
   const planId = `plan-${planStart}-${planEnd}-${Date.now()}`;
+
   return uniqueVehicles.slice(0, requested).map((vehicle, index): PublishingAssignmentDraft => {
-    const day = daySlots[index];
-    const chosen = activeAgents.map((agent) => ({
+    const slot = slots[index];
+    const pool = poolByBranch.get(slot.branchId);
+    if (!pool) throw new Error("تعذر تحديد فرع التكليف.");
+
+    const chosen = pool.agents.map((agent) => ({
       agent,
-      dayUsed: dayAgentCounts.get(`${agent.id}:${day.key}`) || 0,
+      dayUsed: dayAgentCounts.get(`${agent.id}:${slot.day.key}`) || 0,
       planUsed: periodAgentCounts.get(agent.id) || 0,
       historyUsed: historyAgentCounts.get(agent.id) || 0,
     })).sort((a, b) => a.dayUsed - b.dayUsed || a.planUsed - b.planUsed || a.historyUsed - b.historyUsed || a.agent.name.localeCompare(b.agent.name, "ar"))[0];
 
-    const dayAgentKey = `${chosen.agent.id}:${day.key}`;
+    const dayAgentKey = `${chosen.agent.id}:${slot.day.key}`;
     dayAgentCounts.set(dayAgentKey, chosen.dayUsed + 1);
     periodAgentCounts.set(chosen.agent.id, chosen.planUsed + 1);
     historyAgentCounts.set(chosen.agent.id, chosen.historyUsed + 1);
-    const branchId = String(chosen.agent.accountId || "");
 
     return {
       vehicleKey: vehicle.key,
@@ -173,8 +308,8 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
       statement: vehicle.statement,
       modelYear: vehicle.modelYear,
       stockQtySnapshot: vehicle.quantity,
-      accountId: branchId, // legacy compatibility: this is branch id, not Haraj account.
-      branchId,
+      accountId: slot.branchId,
+      branchId: slot.branchId,
       agentId: chosen.agent.id,
       harajAccountName: accountName,
       status: "assigned",
@@ -183,7 +318,7 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
       weekStart,
       planStart,
       planEnd,
-      scheduledDate: day.key,
+      scheduledDate: slot.day.key,
       coverageCycle,
       planId,
       scheduleOrder: index + 1,

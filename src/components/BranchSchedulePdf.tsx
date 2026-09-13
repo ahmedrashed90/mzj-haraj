@@ -46,7 +46,7 @@ export function BranchSchedulePdf({ branch, ads, agents, publishingSettings, pla
       <Header branch={branch} publishing={publishingSettings} planStart={planStart} planEnd={planEnd} />
       <div className="pdf-summary pdf-summary-final"><div><span>حد حساب حراج اليومي</span><strong>{publishingSettings.dailyLimit}</strong></div><div><span>أيام الجدول</span><strong>{planDays.length}</strong></div><div><span>سعة الشركة للفترة</span><strong>{companyCapacity}</strong></div><div><span>تكليفات هذا الفرع</span><strong>{ads.length}</strong></div></div>
       <div className="pdf-final-day-summary">{dayTotals.map(({ day, count }) => <div key={day.key}><span>{day.name}</span><b>{count} إعلان</b></div>)}</div>
-      <div className="pdf-guidance-heading"><span>تعليمات مدير الفرع والمناديب</span><h2>سياسات النشر والمتابعة</h2><p>حد حساب حراج مشترك على الشركة كلها، والصفحة دي مرجع المتابعة بعد جدول الأيام.</p></div>
+      <div className="pdf-guidance-heading"><span>تعليمات مدير الفرع والمناديب</span><h2>سياسات النشر والمتابعة</h2><p>حد حساب حراج واحد للشركة، ويُقسم العدد اليومي على الفروع حسب عدد المناديب النشطين. الصفحة دي مرجع المتابعة بعد جدول الأيام.</p></div>
       <div className="pdf-guidance-grid pdf-guidance-grid-final"><section className="pdf-guidance"><h2>سياسات النشر المختصرة</h2>{POLICIES.map((x) => <p key={x}>✓ {x}</p>)}</section><section className="pdf-guidance follow"><h2>متابعة الرسائل والتعليقات والقيود</h2>{FOLLOW_UP.map((x) => <p key={x}>• {x}</p>)}</section></div>
       <div className="pdf-final-callout"><strong>بعد نشر كل إعلان</strong><span>يرسل المندوب رابط الإعلان لمدير الفرع ليتم تسجيله ومراجعته في النظام.</span></div>
       <Footer pageNumber={pageNo} totalPages={totalPages} />
@@ -58,7 +58,7 @@ export function BranchSchedulePdf({ branch, ads, agents, publishingSettings, pla
       <div className="pdf-day-banner"><div><span>{page.segmentIndex ? "استكمال إعلانات اليوم" : "إعلانات اليوم"}</span><h2>{page.day.name} — {formatDateArabic(page.day.key, { day: "numeric", month: "long", year: "numeric" })}</h2></div><div className="pdf-day-metrics"><span>حد حساب حراج للشركة <b>{publishingSettings.dailyLimit}</b></span><span>إعلانات الفرع اليوم <b>{fullDayCount}</b></span><span>مناديب الفرع المشاركون <b>{reps}</b></span></div></div>
       {page.segmentCount > 1 ? <div className="pdf-continuation-strip">استكمال اليوم نفسه — جزء {page.segmentIndex + 1} من {page.segmentCount}</div> : null}
       <table className={`pdf-table pdf-day-table ${page.rows.length >= 14 ? "pdf-table-dense" : ""}`}><thead><tr><th>المندوب</th><th>السيارة</th><th>البيان</th><th>الموديل</th><th>رابط الإعلان</th></tr></thead><tbody>{page.rows.map((ad) => <tr key={ad.id}><td>{agentById.get(ad.agentId)?.name || "—"}</td><td>{ad.carName}</td><td>{ad.statement}</td><td>{ad.modelYear}</td><td className={isPublished(ad) ? "pdf-done" : "pdf-link-placeholder"}>{isPublished(ad) ? "تم استلام الرابط" : "يرسل بعد النشر"}</td></tr>)}</tbody></table>
-      <div className="pdf-day-note"><span>إعلانات {branch.name} في {page.day.name}: <b>{fullDayCount}</b></span><span>التوزيع العام يتم على كل مناديب الشركة؛ هذا الملف يعرض تكليفات الفرع فقط.</span></div>
+      <div className="pdf-day-note"><span>إعلانات {branch.name} في {page.day.name}: <b>{fullDayCount}</b></span><span>هذه هي حصة الفرع بعد تقسيم الحد اليومي، ثم توزيعها على مناديب الفرع فقط.</span></div>
       <Footer pageNumber={pageNo} totalPages={totalPages} />
     </section>;
   })}</div>;

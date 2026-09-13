@@ -907,7 +907,7 @@ dd { margin: 0; font-weight: 700; }
   .daily-distribution-agents > span { width: 100%; justify-content: space-between; }
 }
 
-/* v1.7.0 CLEAN — single Haraj account + global reps + generated ad copy */
+/* Single Haraj account base styles */
 .single-account-panel { border-color: #dfc0b1; background: linear-gradient(135deg,#fff 0%,#fff8f4 100%); }
 .publishing-settings-form { display: grid; grid-template-columns: minmax(260px,1.5fr) minmax(180px,.6fr) auto; gap: 12px; align-items: end; }
 .publishing-settings-form label { display: grid; gap: 6px; color: var(--muted); font-size: 10px; font-weight: 700; }
@@ -959,4 +959,33 @@ dd { margin: 0; font-weight: 700; }
   .publishing-settings-form { grid-template-columns: 1fr; }
   .publishing-settings-form button { grid-column: auto; }
   .branch-summary-grid { grid-template-columns: 1fr; }
+}
+
+/* v1.8.0 CLEAN — branch-first daily distribution + CompareKey-authoritative feature sections */
+.comparekey-problems { margin: 10px 0 12px; overflow: hidden; border: 1px solid #efd8c8; border-radius: 12px; background: #fffaf6; }
+.comparekey-problems-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 11px; border-bottom: 1px solid #efe1d8; background: #fff4ec; }
+.comparekey-problems-head strong { font-size: 10px; color: var(--brown-dark); }
+.comparekey-problems-head span { display: grid; place-items: center; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 999px; background: #fff; color: var(--orange); font-size: 10px; font-weight: 900; }
+.comparekey-problem-row { display: grid; grid-template-columns: minmax(190px,.8fr) minmax(260px,1.2fr); gap: 12px; padding: 9px 11px; border-top: 1px dashed #eadfd8; align-items: center; }
+.comparekey-problem-row:first-of-type { border-top: 0; }
+.comparekey-problem-row > div { min-width: 0; }
+.comparekey-problem-row b, .comparekey-problem-row span, .comparekey-problem-row code, .comparekey-problem-row small { display: block; }
+.comparekey-problem-row b { font-size: 10px; }
+.comparekey-problem-row span { margin-top: 2px; color: var(--muted); font-size: 8px; }
+.comparekey-problem-row code { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--brown); font-size: 8px; }
+.comparekey-problem-row small { margin-top: 3px; color: var(--orange); font-size: 8px; line-height: 1.55; }
+
+.daily-by-branch > header { background: linear-gradient(90deg,#f8f1ed,#fff8f4); }
+.branch-day-groups { display: grid; gap: 8px; padding: 9px; }
+.branch-day-group { padding: 9px; border: 1px solid #eadfd9; border-radius: 10px; background: #fff; }
+.branch-day-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 7px; }
+.branch-day-title > div strong, .branch-day-title > div span { display: block; }
+.branch-day-title > div strong { font-size: 10px; color: var(--text); }
+.branch-day-title > div span { margin-top: 2px; color: var(--muted-2); font-size: 8px; }
+.branch-day-title > b { padding: 4px 7px; border-radius: 999px; background: var(--cream); color: var(--brown); font-size: 9px; white-space: nowrap; }
+.branch-day-group .daily-distribution-agents > span { flex: 0 1 auto; }
+
+@media (max-width: 700px) {
+  .comparekey-problem-row { grid-template-columns: 1fr; gap: 6px; }
+  .branch-day-title { align-items: flex-start; }
 }

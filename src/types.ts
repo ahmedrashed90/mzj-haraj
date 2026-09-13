@@ -1,8 +1,8 @@
 export type HarajAccount = {
   id: string;
-  /** Branch name. The collection name is kept for backward compatibility. */
+  /** Internal branch. The Firestore collection name is retained for compatibility. */
   name: string;
-  /** Legacy field. No longer used as publishing capacity in v1.7.0. */
+  /** Legacy field only; publishing capacity comes from settings/haraj_publishing. */
   adLimit: number;
   note?: string;
   active: boolean;
@@ -21,7 +21,7 @@ export type Agent = {
   name: string;
   phone: string;
   active: boolean;
-  /** Branch record id. All active reps still share the same Haraj publishing account. */
+  /** Internal branch id. Daily publishing is split by branch, then by its reps. */
   accountId?: string;
   branchName?: string;
   adLimit?: number;
@@ -31,6 +31,7 @@ export type Agent = {
 
 export type AdStatus = "assigned" | "published" | "approved" | "needs_fix" | "closed";
 export type SpecsStatus = "matched" | "partial" | "missing";
+export type CompareKeyStatus = "found" | "missing_key" | "not_found" | "unavailable";
 
 export type HarajAd = {
   id: string;
@@ -39,9 +40,8 @@ export type HarajAd = {
   statement: string;
   modelYear: string;
   stockQtySnapshot: number;
-  /** Legacy branch link retained for old records. */
+  /** Internal branch link retained in both fields for old records. */
   accountId?: string;
-  /** Canonical branch link for new records. */
   branchId?: string;
   agentId: string;
   harajAccountName?: string;
@@ -59,13 +59,19 @@ export type HarajAd = {
   publishedAt?: string;
   updatedAt?: string;
 
-  /** Frozen copy prepared for the rep at assignment time. */
+  /** Frozen ad-copy snapshot prepared at assignment time. */
   adTitle?: string;
   adText?: string;
   specsStatus?: SpecsStatus;
+  specsIssue?: string;
   websitePostId?: number;
   websiteVehicleId?: string;
   websiteCompareKey?: string;
+  websiteCompareKeyStatus?: CompareKeyStatus;
+  websiteCompareKeyFound?: boolean;
+  websiteInteriorSpecsCount?: number;
+  websiteExteriorSpecsCount?: number;
+  websiteSafetySpecsCount?: number;
   websitePermalink?: string;
   websitePrice?: number;
 };
@@ -105,8 +111,11 @@ export type WebsiteCarData = {
   engine: string;
   fuel: string;
   compareKey: string;
+  compareKeyStatus: CompareKeyStatus;
+  compareKeyFound: boolean;
   permalink: string;
   baseSpecs: Record<string, string>;
+  /** These three arrays come only from the CompareKey specification row. */
   interiorSpecs: string[];
   exteriorSpecs: string[];
   safetySpecs: string[];

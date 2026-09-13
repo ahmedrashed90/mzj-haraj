@@ -1,0 +1,15 @@
+MZJ Haraj Manager v1.8.0 CLEAN - Verification
+
+1) TypeScript syntax transpile: PASS (src + api).
+2) schedule.ts + types.ts strict standalone compile: PASS.
+3) Runtime scheduling test:
+   - 25 ads/day
+   - 14 active reps across 3 branches (4 / 7 / 3)
+   - 100 unique vehicles
+   - Result: 25 ads on each of first 4 days, branch split 7 / 13 / 5, balanced inside each branch.
+   - Duplicate vehicle keys: 0.
+4) Partial-capacity test:
+   - 21 unique vehicles, daily limit 25
+   - Result: 21 assignments on the first publishing day, no spreading 5/4/4/4/4, no repeats.
+5) WordPress bridge PHP syntax: PASS.
+6) Full npm/Vite dependency build was not run because dependency installation is not guaranteed in this execution environment.

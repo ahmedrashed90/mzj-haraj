@@ -43,7 +43,7 @@ function candidateScore(stock: StockGroup, car: WebsiteCarData) {
   let score = 0;
   if (stockYear && carYear && stockYear === carYear) score += 35;
   if (stockCar && model && stockCar === model) score += 50;
-  else if (stockCar && (title.includes(stockCar) || stockCar.includes(model))) score += 34;
+  else if (stockCar && (title.includes(stockCar) || (model && stockCar.includes(model)))) score += 34;
   else score += Math.round(overlapScore(stock.carName, `${car.model} ${car.title}`) * 28);
 
   if (stockStatement && trim && stockStatement === trim) score += 40;
@@ -117,10 +117,30 @@ function buildBaseSpecLines(car: WebsiteCarData) {
   });
 }
 
-function categoryBlock(title: string, values: string[], maxItems = 10) {
+function categoryBlock(title: string, values: string[], maxItems = 12) {
   const items = uniqueFeatures(values).slice(0, maxItems);
   if (!items.length) return "";
   return `${title}:\n${items.map((item) => `• ${item}`).join("\n")}`;
+}
+
+function compareKeyStatus(car: WebsiteCarData | null) {
+  if (!car) return { status: "missing" as SpecsStatus, issue: "لم يتم العثور على سيارة مطابقة مؤكدة في الموقع." };
+  if (!goodValue(car.compareKey)) return { status: "missing" as SpecsStatus, issue: "CompareKey ناقص في سيارة الموقع." };
+  if (!car.compareKeyFound || car.compareKeyStatus !== "found") {
+    return { status: "missing" as SpecsStatus, issue: `CompareKey (${car.compareKey}) غير موجود داخل شيت المواصفات.` };
+  }
+
+  const missingSections: string[] = [];
+  if (!uniqueFeatures(car.interiorSpecs).length) missingSections.push("المواصفات الداخلية");
+  if (!uniqueFeatures(car.exteriorSpecs).length) missingSections.push("المواصفات الخارجية");
+  if (!uniqueFeatures(car.safetySpecs).length) missingSections.push("مواصفات الأمان");
+  if (missingSections.length) {
+    return {
+      status: "partial" as SpecsStatus,
+      issue: `CompareKey مرتبط، لكن ناقص: ${missingSections.join("، ")}.`,
+    };
+  }
+  return { status: "matched" as SpecsStatus, issue: "" };
 }
 
 export function buildAdCopy(stock: StockGroup, websiteCar: WebsiteCarData | null, settings: PublishingSettings) {
@@ -137,6 +157,8 @@ export function buildAdCopy(stock: StockGroup, websiteCar: WebsiteCarData | null
     const baseSpecs = buildBaseSpecLines(websiteCar);
     if (baseSpecs.length) lines.push("", "المواصفات الرئيسية:", ...baseSpecs.map((item) => `• ${item}`));
 
+    // The three feature sections below are intentionally sourced only from the
+    // CompareKey row returned by the WordPress bridge.
     const blocks = [
       categoryBlock("المواصفات الداخلية", websiteCar.interiorSpecs),
       categoryBlock("المواصفات الخارجية", websiteCar.exteriorSpecs),
@@ -148,19 +170,20 @@ export function buildAdCopy(stock: StockGroup, websiteCar: WebsiteCarData | null
     if (goodValue(stock.statement)) lines.push(`الفئة: ${stock.statement}`);
   }
 
-  const baseCount = websiteCar ? buildBaseSpecLines(websiteCar).length : 0;
-  const featureCount = websiteCar
-    ? uniqueFeatures([...websiteCar.interiorSpecs, ...websiteCar.exteriorSpecs, ...websiteCar.safetySpecs]).length
-    : 0;
-  const specsStatus: SpecsStatus = websiteCar ? (baseCount >= 4 || featureCount >= 4 ? "matched" : "partial") : "missing";
-
+  const specState = compareKeyStatus(websiteCar);
   return {
     adTitle: title,
     adText: lines.join("\n").replace(/\n{3,}/g, "\n\n").trim(),
-    specsStatus,
+    specsStatus: specState.status,
+    specsIssue: specState.issue,
     websitePostId: websiteCar?.postId,
     websiteVehicleId: websiteCar?.vehicleId || "",
     websiteCompareKey: websiteCar?.compareKey || "",
+    websiteCompareKeyStatus: websiteCar?.compareKeyStatus || "unavailable",
+    websiteCompareKeyFound: Boolean(websiteCar?.compareKeyFound),
+    websiteInteriorSpecsCount: websiteCar ? uniqueFeatures(websiteCar.interiorSpecs).length : 0,
+    websiteExteriorSpecsCount: websiteCar ? uniqueFeatures(websiteCar.exteriorSpecs).length : 0,
+    websiteSafetySpecsCount: websiteCar ? uniqueFeatures(websiteCar.safetySpecs).length : 0,
     websitePermalink: websiteCar?.permalink || "",
     websitePrice: websiteCar?.price || 0,
   };
