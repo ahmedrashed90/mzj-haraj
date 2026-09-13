@@ -46,6 +46,9 @@ export type HarajAd = {
   accountId?: string;
   branchId?: string;
   agentId: string;
+  /** Frozen rep identity used in the prepared Haraj ad. */
+  agentNameSnapshot?: string;
+  agentPhoneSnapshot?: string;
   /** Actual Haraj account used for publishing/capacity. */
   harajAccountName?: string;
   /** Branch-specific showroom/company name written inside the ad copy. */

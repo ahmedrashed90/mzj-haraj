@@ -162,13 +162,16 @@ export function InventoryPage() {
   const matched = previewRows.filter((ad) => ad.specsStatus === "matched").length;
   const partial = previewRows.filter((ad) => ad.specsStatus === "partial").length;
   const missing = previewRows.filter((ad) => ad.specsStatus === "missing").length;
-  const notReady = partial + missing;
+  const missingPrice = previewRows.filter((ad) => !(Number(ad.websitePrice || 0) > 0)).length;
+  const missingContact = previewRows.filter((ad) => !String(ad.agentNameSnapshot || "").trim() || !String(ad.agentPhoneSnapshot || "").trim()).length;
+  const notReadyRows = previewRows.filter((ad) => ad.specsStatus !== "matched" || !(Number(ad.websitePrice || 0) > 0) || !String(ad.agentNameSnapshot || "").trim() || !String(ad.agentPhoneSnapshot || "").trim());
+  const notReady = notReadyRows.length;
   const specsProblems = previewRows.filter((ad) => ad.specsStatus !== "matched");
 
   async function createPlan() {
     if (basePreview.error) return setError(basePreview.error);
     if (!previewRows.length) return setError("لا توجد تكليفات جاهزة للحفظ.");
-    if (notReady) return setError(`يوجد ${notReady} إعلان غير جاهز. يجب أن يكون CompareKey موجودًا ومربوطًا بالمواصفات الداخلية والخارجية والأمان قبل الاعتماد.`);
+    if (notReady) return setError(`يوجد ${notReady} إعلان غير جاهز. يلزم CompareKey كامل، وسعر صحيح من الموقع، واسم ورقم جوال المندوب قبل الاعتماد.`);
     const latest = getCoverageState(compareKeyReadyStock, ads);
     const eligible = new Set(latest.eligibleRows.map((r) => r.key));
     if (!planAutomatic && (latest.cycle !== coverageState.cycle || draftRows.some((r) => !eligible.has(r.key)))) {
@@ -222,8 +225,8 @@ export function InventoryPage() {
       <div className="period-card locked-period"><CalendarBlank size={23} /><div><span>فترة النشر</span><strong>{formatPlanRange(planStart, planEnd)}</strong><small>محددة تلقائيًا</small></div><span className="locked-period-badge">{days.length} أيام</span></div>
       <div className="plan-summary-grid"><div><span>حساب حراج</span><strong className="small-summary-value">{publishingSettings.accountName}</strong></div><div><span>الإعلانات</span><strong>{previewRows.length}</strong></div><div><span>الحد اليومي</span><strong>{dailyLimit}</strong></div><div><span>الفروع / المناديب</span><strong>{activeBranches.length} / {activeAgents.length}</strong></div></div>
       {basePreview.error ? <div className="alert error"><WarningCircle size={18} />{basePreview.error}</div> : <>
-        <div className="specs-preview-summary"><span className="matched">CompareKey كامل <b>{matched}</b></span><span className="partial">CompareKey جزئي <b>{partial}</b></span><span className="missing">CompareKey غير جاهز <b>{missing}</b></span></div>
-        {notReady ? <div className="alert warning"><WarningCircle size={18} />الاعتماد متوقف حتى تكون كل السيارات مرتبطة بـ CompareKey يحتوي المواصفات الداخلية والخارجية ومواصفات الأمان.</div> : null}
+        <div className="specs-preview-summary"><span className="matched">CompareKey كامل <b>{matched}</b></span><span className="partial">CompareKey جزئي <b>{partial}</b></span><span className="missing">CompareKey غير جاهز <b>{missing}</b></span><span className={missingPrice ? "partial" : "matched"}>سعر ناقص <b>{missingPrice}</b></span><span className={missingContact ? "partial" : "matched"}>بيانات مندوب ناقصة <b>{missingContact}</b></span></div>
+        {notReady ? <div className="alert warning"><WarningCircle size={18} />الاعتماد متوقف حتى يكون لكل إعلان CompareKey كامل + سعر من الموقع + اسم ورقم جوال المندوب.</div> : null}
         {specsProblems.length ? <div className="comparekey-problems"><div className="comparekey-problems-head"><strong>السيارات التي تحتاج مراجعة CompareKey</strong><span>{specsProblems.length}</span></div>{specsProblems.map((ad) => <div className="comparekey-problem-row" key={`${ad.vehicleKey}-${ad.agentId}`}><div><b>{ad.carName}</b><span>{ad.statement} · {ad.modelYear}</span></div><div><code>{ad.websiteCompareKey || "بدون CompareKey"}</code><small>{ad.specsIssue || "غير جاهز"}</small></div></div>)}</div> : null}
 
         <div className="daily-distribution-preview">

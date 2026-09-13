@@ -349,6 +349,8 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
       accountId: slot.branchId,
       branchId: slot.branchId,
       agentId: chosen.agent.id,
+      agentNameSnapshot: String(chosen.agent.name || "").trim(),
+      agentPhoneSnapshot: String(chosen.agent.phone || "").trim(),
       harajAccountName: accountName,
       advertiserName: getBranchAdvertiserName(pool.branch, accountName),
       status: "assigned",

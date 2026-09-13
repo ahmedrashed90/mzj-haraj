@@ -143,8 +143,17 @@ export function getCompareKeyState(car: WebsiteCarData | null) {
   return { status: "matched" as SpecsStatus, issue: "" };
 }
 
-export function buildAdCopy(stock: StockGroup, websiteCar: WebsiteCarData | null, settings: PublishingSettings, advertiserName?: string) {
+export function buildAdCopy(
+  stock: StockGroup,
+  websiteCar: WebsiteCarData | null,
+  settings: PublishingSettings,
+  advertiserName?: string,
+  agentName?: string,
+  agentPhone?: string,
+) {
   const accountName = clean(advertiserName) || clean(settings.accountName) || "حساب حراج";
+  const contactName = clean(agentName);
+  const contactPhone = clean(agentPhone);
   const title = goodValue(websiteCar?.title) || [stock.carName, stock.statement, stock.modelYear].filter(goodValue).join(" - ");
   const lines: string[] = [title, "", `متوفرة الآن لدى ${accountName}.`];
 
@@ -168,6 +177,12 @@ export function buildAdCopy(stock: StockGroup, websiteCar: WebsiteCarData | null
   } else {
     if (goodValue(stock.modelYear)) lines.push("", `الموديل: ${stock.modelYear}`);
     if (goodValue(stock.statement)) lines.push(`الفئة: ${stock.statement}`);
+  }
+
+  if (contactName || contactPhone) {
+    lines.push("", "للتواصل:");
+    if (contactName) lines.push(`المندوب: ${contactName}`);
+    if (contactPhone) lines.push(`رقم الجوال: ${contactPhone}`);
   }
 
   const specState = getCompareKeyState(websiteCar);
@@ -206,6 +221,16 @@ export function enrichAssignmentsWithAdCopy<T extends Omit<HarajAd, "id">>(
       quantity: assignment.stockQtySnapshot,
     };
     const websiteCar = matchWebsiteCar(row, websiteCars);
-    return { ...assignment, ...buildAdCopy(row, websiteCar, settings, assignment.advertiserName) };
+    return {
+      ...assignment,
+      ...buildAdCopy(
+        row,
+        websiteCar,
+        settings,
+        assignment.advertiserName,
+        assignment.agentNameSnapshot,
+        assignment.agentPhoneSnapshot,
+      ),
+    };
   });
 }

@@ -961,7 +961,7 @@ dd { margin: 0; font-weight: 700; }
   .branch-summary-grid { grid-template-columns: 1fr; }
 }
 
-/* v1.9.0 CLEAN — branch-first daily distribution + CompareKey-authoritative feature sections */
+/* v1.9.1 CLEAN — branch-first daily distribution + CompareKey-authoritative feature sections */
 .comparekey-problems { margin: 10px 0 12px; overflow: hidden; border: 1px solid #efd8c8; border-radius: 12px; background: #fffaf6; }
 .comparekey-problems-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 11px; border-bottom: 1px solid #efe1d8; background: #fff4ec; }
 .comparekey-problems-head strong { font-size: 10px; color: var(--brown-dark); }
@@ -990,9 +990,25 @@ dd { margin: 0; font-weight: 700; }
   .branch-day-title { align-items: flex-start; }
 }
 
-/* v1.9.0 - branch-specific advertiser names */
+/* v1.9.1 - branch-specific advertiser names */
 .branch-advertiser-editor { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: end; gap: 9px; margin: 11px 0; padding: 10px; border: 1px solid #eadbd3; border-radius: 11px; background: #fff; }
 .branch-advertiser-editor label { display: grid; gap: 5px; color: var(--muted); font-size: 9px; font-weight: 700; }
 .branch-advertiser-editor input { width: 100%; padding: 8px 9px; border: 1px solid var(--border-strong); border-radius: 9px; background: #fff; color: var(--text); }
 .branch-export-numbers { align-items: flex-start; }
 @media (max-width: 700px) { .branch-advertiser-editor { grid-template-columns: 1fr; } .branch-advertiser-editor .secondary-button { width: 100%; } }
+
+
+/* v1.9.1 CLEAN - Haraj publishing values: rep, phone and price */
+.ad-publish-values { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 7px; margin-bottom: 9px; }
+.ad-publish-value { position: relative; min-width: 0; padding: 8px 9px 8px 38px; border: 1px solid #eadbd3; border-radius: 10px; background: #fffaf7; }
+.ad-publish-value span, .ad-publish-value b { display: block; }
+.ad-publish-value span { color: var(--muted); font-size: 8px; }
+.ad-publish-value b { margin-top: 2px; overflow: hidden; color: var(--brown-dark); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.ad-publish-value .ltr-value { direction: ltr; text-align: right; }
+.copy-mini-button { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; gap: 2px; padding: 4px; border: 0; border-radius: 7px; background: #fff; color: var(--brown); }
+.copy-mini-button em { display: none; font-size: 7px; font-style: normal; }
+.copy-mini-button:disabled { opacity: .35; }
+.copy-warning > div { display: grid; gap: 3px; }
+.copy-warning > div > span { display: block; }
+@media (min-width: 1200px) { .ad-copy-card:not(.compact-copy) .copy-mini-button em { display: inline; } }
+@media (max-width: 700px) { .ad-publish-values { grid-template-columns: 1fr; } .ad-publish-value { padding-left: 48px; } .copy-mini-button em { display: inline; } }

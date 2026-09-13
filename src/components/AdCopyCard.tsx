@@ -14,35 +14,61 @@ function fallbackCopy(text: string) {
   return ok;
 }
 
-export function AdCopyCard({ ad, compact = false }: { ad: HarajAd; compact?: boolean }) {
-  const [copied, setCopied] = useState(false);
-  const text = String(ad.adText || "").trim();
-  const ready = ad.specsStatus === "matched" && Boolean(text);
-  const partial = ad.specsStatus === "partial";
-  const missing = ad.specsStatus === "missing" || !text;
+function clean(value: unknown) { return String(value ?? "").trim(); }
 
-  async function copy() {
-    if (!ready) return;
+function formatPrice(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "";
+  return new Intl.NumberFormat("ar-SA-u-nu-latn", { maximumFractionDigits: 0 }).format(value);
+}
+
+export function AdCopyCard({ ad, compact = false }: { ad: HarajAd; compact?: boolean }) {
+  const [copiedKey, setCopiedKey] = useState("");
+  const text = clean(ad.adText);
+  const agentName = clean(ad.agentNameSnapshot);
+  const agentPhone = clean(ad.agentPhoneSnapshot);
+  const numericPrice = Number(ad.websitePrice || 0);
+  const price = formatPrice(numericPrice);
+  const compareKeyReady = ad.specsStatus === "matched";
+  const contactReady = Boolean(agentName && agentPhone);
+  const priceReady = Boolean(price);
+  const ready = compareKeyReady && Boolean(text) && contactReady && priceReady;
+  const partial = ad.specsStatus === "partial";
+
+  async function copyValue(key: string, value: string) {
+    if (!value) return;
     try {
-      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
-      else if (!fallbackCopy(text)) throw new Error("COPY_FAILED");
-      setCopied(true); window.setTimeout(() => setCopied(false), 1500);
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value);
+      else if (!fallbackCopy(value)) throw new Error("COPY_FAILED");
+      setCopiedKey(key);
+      window.setTimeout(() => setCopiedKey((current) => current === key ? "" : current), 1500);
     } catch {
-      window.alert("تعذر النسخ التلقائي. افتح المعاينة وحدد النص يدويًا.");
+      window.alert("تعذر النسخ التلقائي. حدد القيمة يدويًا.");
     }
   }
 
+  const issues: string[] = [];
+  if (!compareKeyReady) issues.push(ad.specsIssue || (partial ? "CompareKey مرتبط لكن المواصفات غير مكتملة." : "المواصفات غير مرتبطة بـ CompareKey كامل."));
+  if (!priceReady) issues.push("السعر غير متوفر في بيانات سيارة الموقع، لذلك الإعلان غير جاهز للنشر.");
+  if (!agentName) issues.push("اسم المندوب غير موجود في التكليف.");
+  if (!agentPhone) issues.push("رقم جوال المندوب غير موجود في التكليف.");
+
   return <div className={`ad-copy-card ${compact ? "compact-copy" : ""}`}>
+    <div className="ad-publish-values">
+      <div className="ad-publish-value"><span>المندوب</span><b>{agentName || "—"}</b><button type="button" className="copy-mini-button" disabled={!agentName} onClick={() => void copyValue("agent", agentName)}>{copiedKey === "agent" ? <Check size={14} /> : <Copy size={14} />}<em>{copiedKey === "agent" ? "تم" : "نسخ"}</em></button></div>
+      <div className="ad-publish-value"><span>رقم الجوال</span><b className="ltr-value">{agentPhone || "—"}</b><button type="button" className="copy-mini-button" disabled={!agentPhone} onClick={() => void copyValue("phone", agentPhone)}>{copiedKey === "phone" ? <Check size={14} /> : <Copy size={14} />}<em>{copiedKey === "phone" ? "تم" : "نسخ"}</em></button></div>
+      <div className="ad-publish-value"><span>السعر في حراج</span><b>{price ? `${price} ريال` : "—"}</b><button type="button" className="copy-mini-button" disabled={!price} onClick={() => void copyValue("price", price)}>{copiedKey === "price" ? <Check size={14} /> : <Copy size={14} />}<em>{copiedKey === "price" ? "تم" : "نسخ"}</em></button></div>
+    </div>
+
     <div className="ad-copy-actions">
-      <button className="secondary-button compact" disabled={!ready} onClick={() => void copy()} title={!ready ? "يلزم CompareKey كامل بالمواصفات الداخلية والخارجية والأمان" : "نسخ صيغة الإعلان كاملة"}>
-        {copied ? <Check size={16} /> : <Copy size={16} />}{copied ? "تم النسخ" : "نسخ صيغة الإعلان"}
+      <button className="secondary-button compact" disabled={!ready} onClick={() => void copyValue("ad", text)} title={!ready ? "يلزم CompareKey كامل + السعر + اسم ورقم المندوب" : "نسخ صيغة الإعلان كاملة"}>
+        {copiedKey === "ad" ? <Check size={16} /> : <Copy size={16} />}{copiedKey === "ad" ? "تم النسخ" : "نسخ صيغة الإعلان"}
       </button>
       {ad.websitePermalink ? <a className="icon-button" href={ad.websitePermalink} target="_blank" rel="noreferrer" title="فتح صفحة السيارة بالموقع"><LinkSimple size={16} /></a> : null}
       <span className={`specs-status ${ready ? "matched" : partial ? "partial" : "missing"}`}>
-        {ready ? "CompareKey كامل" : partial ? "CompareKey جزئي" : "CompareKey غير جاهز"}
+        {ready ? "جاهز للنشر" : compareKeyReady ? "بيانات النشر ناقصة" : partial ? "CompareKey جزئي" : "CompareKey غير جاهز"}
       </span>
     </div>
-    {!ready ? <div className="copy-warning"><WarningCircle size={15} />{ad.specsIssue || (missing ? "المواصفات غير مرتبطة بـ CompareKey." : "CompareKey مرتبط لكن المواصفات غير مكتملة.")}</div> : null}
+    {issues.length ? <div className="copy-warning"><WarningCircle size={15} /><div>{issues.map((issue) => <span key={issue}>{issue}</span>)}</div></div> : null}
     {text ? <details className="ad-copy-preview"><summary>معاينة صيغة الإعلان</summary><pre>{text}</pre></details> : null}
   </div>;
 }
