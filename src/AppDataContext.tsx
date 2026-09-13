@@ -1,12 +1,13 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { fetchStock, fetchWebsiteCars, subscribeAccounts, subscribeAds, subscribeAgents, subscribePublishingSettings } from "./data";
-import type { Agent, HarajAccount, HarajAd, PublishingSettings, StockGroup, WebsiteCarData } from "./types";
+import { fetchStock, fetchWebsiteCars, subscribeAccounts, subscribeAds, subscribeAgents, subscribePublishingPeriods, subscribePublishingSettings } from "./data";
+import type { Agent, HarajAccount, HarajAd, PublishingPeriod, PublishingSettings, StockGroup, WebsiteCarData } from "./types";
 
 type AppDataState = {
   accounts: HarajAccount[];
   agents: Agent[];
   ads: HarajAd[];
   publishingSettings: PublishingSettings;
+  publishingPeriods: PublishingPeriod[];
   stock: StockGroup[];
   stockTotalVehicles: number;
   stockExcludedAgencyVehicles: number;
@@ -29,6 +30,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [ads, setAds] = useState<HarajAd[]>([]);
   const [publishingSettings, setPublishingSettings] = useState<PublishingSettings>(EMPTY_SETTINGS);
+  const [publishingPeriods, setPublishingPeriods] = useState<PublishingPeriod[]>([]);
   const [stock, setStock] = useState<StockGroup[]>([]);
   const [stockTotalVehicles, setStockTotalVehicles] = useState(0);
   const [stockExcludedAgencyVehicles, setStockExcludedAgencyVehicles] = useState(0);
@@ -47,7 +49,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     const unsubAgents = subscribeAgents(setAgents, onError);
     const unsubAds = subscribeAds(setAds, onError);
     const unsubSettings = subscribePublishingSettings(setPublishingSettings, onError);
-    return () => { unsubAccounts(); unsubAgents(); unsubAds(); unsubSettings(); };
+    const unsubPeriods = subscribePublishingPeriods(setPublishingPeriods, onError);
+    return () => { unsubAccounts(); unsubAgents(); unsubAds(); unsubSettings(); unsubPeriods(); };
   }, []);
 
   async function refreshStock() {
@@ -71,11 +74,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   useEffect(() => { void refreshStock(); void refreshWebsiteCars(); }, []);
 
   const value = useMemo(() => ({
-    accounts, agents, ads, publishingSettings,
+    accounts, agents, ads, publishingSettings, publishingPeriods,
     stock, stockTotalVehicles, stockExcludedAgencyVehicles, stockFetchedAt, stockLoading, stockError,
     websiteCars, websiteCarsFetchedAt, websiteCarsLoading, websiteCarsError,
     dataError, refreshStock, refreshWebsiteCars,
-  }), [accounts, agents, ads, publishingSettings, stock, stockTotalVehicles, stockExcludedAgencyVehicles, stockFetchedAt, stockLoading, stockError, websiteCars, websiteCarsFetchedAt, websiteCarsLoading, websiteCarsError, dataError]);
+  }), [accounts, agents, ads, publishingSettings, publishingPeriods, stock, stockTotalVehicles, stockExcludedAgencyVehicles, stockFetchedAt, stockLoading, stockError, websiteCars, websiteCarsFetchedAt, websiteCarsLoading, websiteCarsError, dataError]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 export function useAppData() { const value = useContext(Context); if (!value) throw new Error("AppDataProvider is missing"); return value; }

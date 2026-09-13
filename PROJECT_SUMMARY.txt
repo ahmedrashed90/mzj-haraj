@@ -1,25 +1,33 @@
-MZJ Haraj Manager v1.9.3 CLEAN
+MZJ Haraj Manager v1.10.0 CLEAN
 
 CORE RULES
-- One actual Haraj account for the company.
-- One company daily limit.
-- Each branch has its own editable advertiserName used inside generated ad copy.
-- Default advertiser names:
-  * الملتقى = شركة الملتقى للسيارات
-  * الصالة = معرض محمد ذعار العجمي للسيارات
-  * القادسية = معرض محمد العجمى للسيارات
-- Fill every publishing day to available daily capacity.
-- Split each day's ads across active branches according to active rep count.
-- Split each branch share only across reps of that branch.
-- No vehicle repeats inside the same coverage cycle; start a new cycle after all eligible vehicles are covered.
-- Cars without a complete CompareKey are excluded from selection and automatic scheduling.
+- One actual Haraj account and one company daily limit.
+- Daily publishing is configured through publishing periods.
+- Every period has: name, start/end time, ads/day, ordered agentIds, active state.
+- Active period ads/day total must equal the Haraj daily limit.
+- Assignment follows each period's rep order exactly; it loops only when the period requires more ads than its selected reps.
+- Branch comes from the assigned rep. There is no automatic proportional branch quota in v1.10.0.
+- Reps can be cash or installment.
+- Cash reps receive the normal Haraj title.
+- Installment reps receive a financing title only in the Haraj title field; financing wording is not inserted into the description body.
+- Every assignment snapshots period/time/rep order/rep type/rep contact/branch/title/body.
+- No vehicle repeats inside the same coverage cycle; after all eligible cars are covered, a new cycle starts.
+- Cars without complete CompareKey are excluded from scheduling.
 - Agency-location stock remains excluded.
 
 AD COPY / COMPAREKEY
 - Interior specs: CompareKey only.
 - Exterior specs: CompareKey only.
 - Safety specs: CompareKey only.
-- Generated phrase uses branch advertiserName, not the actual Haraj login/account name.
+- Description ends with tax-inclusive website price and the approved discount/gifts line.
+- Description contact block contains the name and phone without the word "المندوب".
+
+FIRESTORE
+- settings/haraj_publishing
+- haraj_accounts
+- agents (includes agentType)
+- publishing_periods
+- haraj_ads
 
 WORDPRESS BRIDGE
 - MZJ Haraj Ad Data Bridge v1.1.0

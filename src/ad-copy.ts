@@ -1,4 +1,4 @@
-import type { HarajAd, PublishingSettings, SpecsStatus, StockGroup, WebsiteCarData } from "./types";
+import type { AgentType, HarajAd, PublishingSettings, SpecsStatus, StockGroup, WebsiteCarData } from "./types";
 
 function clean(value: unknown) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
@@ -117,6 +117,11 @@ function buildBaseSpecLines(car: WebsiteCarData) {
   });
 }
 
+function buildInstallmentTitle(stock: StockGroup) {
+  const car = [goodValue(stock.carName), goodValue(stock.modelYear)].filter(Boolean).join(" ").replace(/\s*-\s*/g, " ").replace(/\s+/g, " ").trim();
+  return `${car} | أقوى عروض التمويل | بدون دفعة | أطول فترة سداد | أقل قسط شهري بالتأمين الشامل`;
+}
+
 function categoryBlock(title: string, values: string[], maxItems = 12) {
   const items = uniqueFeatures(values).slice(0, maxItems);
   if (!items.length) return "";
@@ -150,6 +155,7 @@ export function buildAdCopy(
   advertiserName?: string,
   agentName?: string,
   agentPhone?: string,
+  agentType: AgentType = "cash",
 ) {
   // advertiserName/settings are intentionally kept in the function contract for
   // the existing assignment snapshot/configuration, but the Haraj ad body itself
@@ -158,8 +164,9 @@ export function buildAdCopy(
   void settings;
   const contactName = clean(agentName);
   const contactPhone = clean(agentPhone);
-  const title = goodValue(websiteCar?.title) || [stock.carName, stock.statement, stock.modelYear].filter(goodValue).join(" - ");
-  const lines: string[] = [title, "", "متوفرة الآن"];
+  const bodyTitle = goodValue(websiteCar?.title) || [stock.carName, stock.statement, stock.modelYear].filter(goodValue).join(" - ");
+  const adTitle = agentType === "installment" ? buildInstallmentTitle(stock) : bodyTitle;
+  const lines: string[] = [bodyTitle, "", "متوفرة الآن"];
   let formattedPrice = "";
 
   if (websiteCar) {
@@ -201,7 +208,7 @@ export function buildAdCopy(
 
   const specState = getCompareKeyState(websiteCar);
   return {
-    adTitle: title,
+    adTitle,
     adText: lines.join("\n").replace(/\n{3,}/g, "\n\n").trim(),
     specsStatus: specState.status,
     specsIssue: specState.issue,
@@ -244,6 +251,7 @@ export function enrichAssignmentsWithAdCopy<T extends Omit<HarajAd, "id">>(
         assignment.advertiserName,
         assignment.agentNameSnapshot,
         assignment.agentPhoneSnapshot,
+        assignment.agentTypeSnapshot || "cash",
       ),
     };
   });

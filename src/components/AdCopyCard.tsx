@@ -44,10 +44,11 @@ export function AdCopyCard({ ad, compact = false }: { ad: HarajAd; compact?: boo
   const numericPrice = Number(ad.websitePrice || 0);
   const price = formatPrice(numericPrice);
   const text = normalizeAdTextForPublishing(ad.adText, price);
+  const title = clean(ad.adTitle);
   const compareKeyReady = ad.specsStatus === "matched";
   const contactReady = Boolean(agentName && agentPhone);
   const priceReady = Boolean(price);
-  const ready = compareKeyReady && Boolean(text) && contactReady && priceReady;
+  const ready = compareKeyReady && Boolean(title) && Boolean(text) && contactReady && priceReady;
   const partial = ad.specsStatus === "partial";
 
   async function copyValue(key: string, value: string) {
@@ -63,12 +64,17 @@ export function AdCopyCard({ ad, compact = false }: { ad: HarajAd; compact?: boo
   }
 
   const issues: string[] = [];
+  if (!title) issues.push("عنوان إعلان حراج غير جاهز.");
   if (!compareKeyReady) issues.push(ad.specsIssue || (partial ? "CompareKey مرتبط لكن المواصفات غير مكتملة." : "المواصفات غير مرتبطة بـ CompareKey كامل."));
   if (!priceReady) issues.push("السعر غير متوفر في بيانات سيارة الموقع، لذلك الإعلان غير جاهز للنشر.");
   if (!agentName) issues.push("اسم المندوب غير موجود في التكليف.");
   if (!agentPhone) issues.push("رقم جوال المندوب غير موجود في التكليف.");
 
   return <div className={`ad-copy-card ${compact ? "compact-copy" : ""}`}>
+    <div className="haraj-title-copy">
+      <div><span>عنوان إعلان حراج</span><b>{title || "—"}</b><small>{ad.agentTypeSnapshot === "installment" ? "عنوان تمويل" : "عنوان كاش"}</small></div>
+      <button type="button" className="secondary-button compact" disabled={!title} onClick={() => void copyValue("title", title)}>{copiedKey === "title" ? <Check size={16} /> : <Copy size={16} />}{copiedKey === "title" ? "تم النسخ" : "نسخ العنوان"}</button>
+    </div>
     <div className="ad-publish-values">
       <div className="ad-publish-value"><span>الاسم</span><b>{agentName || "—"}</b><button type="button" className="copy-mini-button" disabled={!agentName} onClick={() => void copyValue("agent", agentName)}>{copiedKey === "agent" ? <Check size={14} /> : <Copy size={14} />}<em>{copiedKey === "agent" ? "تم" : "نسخ"}</em></button></div>
       <div className="ad-publish-value"><span>رقم الجوال</span><b className="ltr-value">{agentPhone || "—"}</b><button type="button" className="copy-mini-button" disabled={!agentPhone} onClick={() => void copyValue("phone", agentPhone)}>{copiedKey === "phone" ? <Check size={14} /> : <Copy size={14} />}<em>{copiedKey === "phone" ? "تم" : "نسخ"}</em></button></div>

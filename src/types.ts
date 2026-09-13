@@ -18,12 +18,31 @@ export type PublishingSettings = {
   updatedAt?: string;
 };
 
+export type AgentType = "cash" | "installment";
+
+export type PublishingPeriod = {
+  id: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  /** Number of ads assigned to this period every publishing day. */
+  adCount: number;
+  /** Ordered rep ids. Their order is the publishing order inside this period. */
+  agentIds: string[];
+  active: boolean;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type Agent = {
   id: string;
   name: string;
   phone: string;
+  /** Controls the Haraj title template prepared for this rep. */
+  agentType?: AgentType;
   active: boolean;
-  /** Internal branch id. Daily publishing is split by branch, then by its reps. */
+  /** Internal branch id. Publishing periods choose the rep; the branch follows the rep. */
   accountId?: string;
   branchName?: string;
   adLimit?: number;
@@ -49,6 +68,14 @@ export type HarajAd = {
   /** Frozen rep identity used in the prepared Haraj ad. */
   agentNameSnapshot?: string;
   agentPhoneSnapshot?: string;
+  agentTypeSnapshot?: AgentType;
+  /** Frozen publishing-period data used when this assignment was created. */
+  publishingPeriodId?: string;
+  publishingPeriodName?: string;
+  publishingPeriodStart?: string;
+  publishingPeriodEnd?: string;
+  publishingPeriodOrder?: number;
+  periodAgentSequence?: number;
   /** Actual Haraj account used for publishing/capacity. */
   harajAccountName?: string;
   /** Branch-specific showroom/company name written inside the ad copy. */

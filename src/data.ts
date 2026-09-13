@@ -10,7 +10,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
-import type { Agent, HarajAccount, HarajAd, PublishingSettings, StockResponse, WebsiteCarsResponse } from "./types";
+import type { Agent, HarajAccount, HarajAd, PublishingPeriod, PublishingSettings, StockResponse, WebsiteCarsResponse } from "./types";
 
 function isoNow() { return new Date().toISOString(); }
 function asClientDoc<T extends { id: string }>(snap: { id: string; data: () => Record<string, unknown> }): T {
@@ -42,8 +42,23 @@ export function subscribeAds(cb: (rows: HarajAd[]) => void, onError?: (error: Er
 export function subscribePublishingSettings(cb: (row: PublishingSettings) => void, onError?: (error: Error) => void) {
   return onSnapshot(doc(db, "settings", "haraj_publishing"), (snapshot) => cb(normalizeSettings(snapshot.exists() ? snapshot.data() : undefined)), (error) => onError?.(error));
 }
+export function subscribePublishingPeriods(cb: (rows: PublishingPeriod[]) => void, onError?: (error: Error) => void) {
+  return onSnapshot(collection(db, "publishing_periods"), (snapshot) => cb(snapshot.docs
+    .map((item) => asClientDoc<PublishingPeriod>(item))
+    .map((item) => ({ ...item, name: String(item.name || ""), startTime: String(item.startTime || ""), endTime: String(item.endTime || ""), adCount: Math.max(0, Math.floor(Number(item.adCount || 0))), agentIds: Array.isArray(item.agentIds) ? item.agentIds.map(String) : [], sortOrder: Number(item.sortOrder || 0), active: item.active !== false }))
+    .sort((a, b) => a.startTime.localeCompare(b.startTime) || a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "ar"))), (error) => onError?.(error));
+}
 export async function savePublishingSettings(patch: Partial<PublishingSettings>) {
   return setDoc(doc(db, "settings", "haraj_publishing"), { ...patch, updatedAt: serverTimestamp() }, { merge: true });
+}
+export async function addPublishingPeriod(input: Omit<PublishingPeriod, "id" | "createdAt" | "updatedAt">) {
+  return addDoc(collection(db, "publishing_periods"), { ...input, adCount: Math.max(0, Math.floor(Number(input.adCount || 0))), agentIds: [...input.agentIds], createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+}
+export async function updatePublishingPeriod(id: string, patch: Partial<PublishingPeriod>) {
+  return updateDoc(doc(db, "publishing_periods", id), { ...patch, updatedAt: serverTimestamp() });
+}
+export async function removePublishingPeriod(id: string) {
+  return deleteDoc(doc(db, "publishing_periods", id));
 }
 
 // haraj_accounts is retained as the branch directory to preserve existing agent links.
