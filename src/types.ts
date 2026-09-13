@@ -1,11 +1,18 @@
 export type HarajAccount = {
   id: string;
+  /** Branch name. The collection name is kept for backward compatibility. */
   name: string;
-  /** Current DAILY publishing limit for this Haraj branch/account. */
+  /** Legacy field. No longer used as publishing capacity in v1.7.0. */
   adLimit: number;
   note?: string;
   active: boolean;
   createdAt?: string;
+  updatedAt?: string;
+};
+
+export type PublishingSettings = {
+  accountName: string;
+  dailyLimit: number;
   updatedAt?: string;
 };
 
@@ -14,15 +21,16 @@ export type Agent = {
   name: string;
   phone: string;
   active: boolean;
-  /** Branch/Haraj account that owns this representative. */
+  /** Branch record id. All active reps still share the same Haraj publishing account. */
   accountId?: string;
-  // Legacy field kept optional so old Firestore records remain readable.
+  branchName?: string;
   adLimit?: number;
   createdAt?: string;
   updatedAt?: string;
 };
 
 export type AdStatus = "assigned" | "published" | "approved" | "needs_fix" | "closed";
+export type SpecsStatus = "matched" | "partial" | "missing";
 
 export type HarajAd = {
   id: string;
@@ -31,16 +39,17 @@ export type HarajAd = {
   statement: string;
   modelYear: string;
   stockQtySnapshot: number;
-  accountId: string;
+  /** Legacy branch link retained for old records. */
+  accountId?: string;
+  /** Canonical branch link for new records. */
+  branchId?: string;
   agentId: string;
+  harajAccountName?: string;
   status: AdStatus;
   url?: string;
   notes?: string;
-  /** Saturday key that owns this publishing period. */
   weekStart?: string;
-  /** Actual first publishing day. Allows the initial short Tue -> Fri plan. */
   planStart?: string;
-  /** Actual last publishing day. Normally Friday. */
   planEnd?: string;
   scheduledDate?: string;
   coverageCycle?: number;
@@ -49,6 +58,16 @@ export type HarajAd = {
   assignedAt?: string;
   publishedAt?: string;
   updatedAt?: string;
+
+  /** Frozen copy prepared for the rep at assignment time. */
+  adTitle?: string;
+  adText?: string;
+  specsStatus?: SpecsStatus;
+  websitePostId?: number;
+  websiteVehicleId?: string;
+  websiteCompareKey?: string;
+  websitePermalink?: string;
+  websitePrice?: number;
 };
 
 export type StockGroup = {
@@ -66,6 +85,36 @@ export type StockResponse = {
   totalVehicles: number;
   totalGroups: number;
   excludedAgencyVehicles?: number;
+  fetchedAt: string;
+  source: string;
+  error?: string;
+};
+
+export type WebsiteCarData = {
+  postId: number;
+  vehicleId: string;
+  title: string;
+  price: number;
+  make: string;
+  model: string;
+  trim: string;
+  year: string;
+  body: string;
+  transmission: string;
+  drivetrain: string;
+  engine: string;
+  fuel: string;
+  compareKey: string;
+  permalink: string;
+  baseSpecs: Record<string, string>;
+  interiorSpecs: string[];
+  exteriorSpecs: string[];
+  safetySpecs: string[];
+};
+
+export type WebsiteCarsResponse = {
+  ok: boolean;
+  items: WebsiteCarData[];
   fetchedAt: string;
   source: string;
   error?: string;

@@ -5,38 +5,16 @@ import { getCoverageState } from "../schedule";
 import { PageTitle } from "../components/Ui";
 
 export function SettingsPage() {
-  const { ads, stock, stockTotalVehicles, stockFetchedAt, stockLoading, stockError, refreshStock } = useAppData();
+  const { ads, stock, stockTotalVehicles, stockFetchedAt, stockLoading, stockError, refreshStock, websiteCars, websiteCarsFetchedAt, websiteCarsLoading, websiteCarsError, refreshWebsiteCars, publishingSettings } = useAppData();
   const coverage = getCoverageState(stock, ads);
+  async function refreshAll() { await Promise.allSettled([refreshStock(), refreshWebsiteCars()]); }
   return <>
-    <PageTitle title="الإعدادات" subtitle="Vercel + Firebase Auth/Firestore فقط. لا Firebase Functions ولا Firebase Hosting." />
+    <PageTitle title="الإعدادات" subtitle="Firebase Auth/Firestore + Vercel API. بيانات المنصة والموقع تبقى Server-only داخل Vercel." />
     <section className="settings-grid">
-      <article className="panel settings-card">
-        <div className="settings-icon"><Database size={28} /></div>
-        <div><h2>مصدر مخزون السيارات</h2><p>منصة MZJ → العمليات → مخزون السيارات — قراءة فقط</p></div>
-        <dl>
-          <div><dt>الحالة المقروءة</dt><dd>متاح للبيع</dd></div>
-          <div><dt>الحقول</dt><dd>سيارة، البيان، موديل، الحالة</dd></div>
-          <div><dt>السجلات الحالية</dt><dd>{stockTotalVehicles} سيارة / {stock.length} سيارة وفئة</dd></div>
-          <div><dt>دورة التغطية الحالية</dt><dd>{coverage.cycle}</dd></div>
-          <div><dt>متاح للتكليف</dt><dd>{coverage.eligibleRows.length}</dd></div>
-          <div><dt>آخر تحديث</dt><dd>{stockFetchedAt ? new Date(stockFetchedAt).toLocaleString("ar-SA-u-nu-latn") : "لم يتم"}</dd></div>
-        </dl>
-        {stockError ? <div className="alert warning"><WarningCircle size={18} />{stockError}</div> : <div className="connection-ok"><CheckCircle size={19} />{stockFetchedAt ? "تم الاتصال بمصدر الاستوك" : "في انتظار أول قراءة"}</div>}
-        <button className="secondary-button" onClick={() => void refreshStock()} disabled={stockLoading}><ArrowClockwise size={18} />تجربة القراءة الآن</button>
-      </article>
-      <article className="panel settings-card">
-        <div className="settings-icon"><LockKey size={28} /></div>
-        <div><h2>الأمان والمعمارية</h2><p>Firebase Authentication + Firestore Rules + Vercel API</p></div>
-        <ul className="settings-list">
-          <li>دخول المدير فقط: {ADMIN_EMAIL}</li>
-          <li>لا توجد صفحة إنشاء مستخدمين أو دخول للمناديب.</li>
-          <li>لا يتم تخزين كلمات مرور حسابات حراج.</li>
-          <li>بيانات دخول منصة MZJ محفوظة كـ Environment Variables في Vercel فقط.</li>
-          <li>قراءة الاستوك تمر عبر <code>/api/stock</code> في Vercel.</li>
-          <li><code>api/stock.ts</code> يقرأ فقط من المنصة ولا يرسل أي تحديث على السيارات.</li>
-          <li>خطط النشر، الحسابات، المناديب وروابط الإعلانات تحفظ في Firestore الخاص بهذا النظام فقط.</li>
-        </ul>
-      </article>
+      <article className="panel settings-card"><div className="settings-icon"><Database size={28} /></div><div><h2>مخزون منصة MZJ</h2><p>العمليات → مخزون السيارات — قراءة فقط</p></div><dl><div><dt>الحالة</dt><dd>متاح للبيع</dd></div><div><dt>استبعاد</dt><dd>المكان = الوكالة</dd></div><div><dt>السجلات</dt><dd>{stockTotalVehicles} سيارة / {stock.length} مجموعة</dd></div><div><dt>دورة التغطية</dt><dd>{coverage.cycle}</dd></div><div><dt>متاح بدون تكرار</dt><dd>{coverage.eligibleRows.length}</dd></div><div><dt>آخر تحديث</dt><dd>{stockFetchedAt ? new Date(stockFetchedAt).toLocaleString("ar-SA-u-nu-latn") : "لم يتم"}</dd></div></dl>{stockError ? <div className="alert warning"><WarningCircle size={18} />{stockError}</div> : <div className="connection-ok"><CheckCircle size={19} />مصدر الاستوك جاهز</div>}</article>
+      <article className="panel settings-card"><div className="settings-icon"><Database size={28} /></div><div><h2>مواصفات موقع MZJ</h2><p>WordPress + Panorama + CompareKey — قراءة فقط</p></div><dl><div><dt>السيارات المقروءة</dt><dd>{websiteCars.length}</dd></div><div><dt>الاستخدام</dt><dd>إنشاء صيغة الإعلان والمواصفات والسعر</dd></div><div><dt>آخر تحديث</dt><dd>{websiteCarsFetchedAt ? new Date(websiteCarsFetchedAt).toLocaleString("ar-SA-u-nu-latn") : "لم يتم"}</dd></div><div><dt>حساب حراج</dt><dd>{publishingSettings.accountName || "غير محدد"}</dd></div></dl>{websiteCarsError ? <div className="alert warning"><WarningCircle size={18} />{websiteCarsError}</div> : <div className="connection-ok"><CheckCircle size={19} />مصدر المواصفات جاهز</div>}<p className="settings-note">يتطلب تثبيت البلجن المرفق <code>MZJ-Haraj-Ad-Data-Bridge</code> وإضافة <code>MZJ_WORDPRESS_BASE_URL</code> و <code>MZJ_HARAJ_BRIDGE_KEY</code> في Vercel.</p></article>
+      <article className="panel settings-card"><div className="settings-icon"><LockKey size={28} /></div><div><h2>الأمان والمعمارية</h2><p>كل الأسرار Server-only.</p></div><ul className="settings-list"><li>دخول المدير فقط: {ADMIN_EMAIL}</li><li>لا كلمات مرور لحساب حراج داخل النظام.</li><li><code>/api/stock</code> يقرأ الاستوك فقط.</li><li><code>/api/website-cars</code> يقرأ مواصفات الموقع فقط.</li><li>البلجن المرافق لا يعدل Panorama أو السيارات.</li><li>الجدول، صيغة الإعلان، رابط حراج والحالة تحفظ في Firestore.</li></ul></article>
     </section>
+    <button className="secondary-button" onClick={() => void refreshAll()} disabled={stockLoading || websiteCarsLoading}><ArrowClockwise size={18} />تجربة كل مصادر القراءة الآن</button>
   </>;
 }
