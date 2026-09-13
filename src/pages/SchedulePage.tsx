@@ -1,54 +1,137 @@
 import { useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, ArrowSquareOut, CalendarBlank, CheckCircle, ClockCountdown, DownloadSimple, FloppyDisk, LinkSimple, Trash, WarningCircle } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowRight, CalendarBlank, CheckCircle, ClipboardText, DownloadSimple, Storefront, Trash, UsersThree, WarningCircle } from "@phosphor-icons/react";
 import { useSearchParams } from "react-router-dom";
 import { useAppData } from "../AppDataContext";
-import { normalizeHarajUrl, removeScheduleAds, updateAd } from "../data";
-import { addDaysKey, adBranchId, dateKey, formatDateArabic, formatPlanRange, getPlanDays, getPlanWindowFromAds, getPublishingPlanCapacity, getWeekStartKey, isOverdue, isPublished } from "../schedule";
-import { AD_STATUS_LABELS, type AdStatus, type HarajAd } from "../types";
-import { ConfirmButton, EmptyState, PageTitle, StatCard } from "../components/Ui";
+import { removeScheduleAds } from "../data";
+import { addDaysKey, adBranchId, dateKey, formatDateArabic, formatPlanRange, getPlanDays, getPlanWindowFromAds, getWeekStartKey, isPublished } from "../schedule";
+import { ConfirmButton, EmptyState, PageTitle } from "../components/Ui";
 import { BranchSchedulePdf } from "../components/BranchSchedulePdf";
-import { AdCopyCard } from "../components/AdCopyCard";
-import { getBranchAdvertiserName } from "../branch-advertiser";
-
-const statuses: AdStatus[] = ["assigned", "published", "approved", "needs_fix", "closed"];
-function LinkEditor({ ad }: { ad: HarajAd }) {
-  const [url, setUrl] = useState(ad.url || ""); const [saving, setSaving] = useState(false);
-  async function save() { setSaving(true); try { const clean = normalizeHarajUrl(url); const patch: Partial<HarajAd> = { url: clean }; if (clean && ad.status === "assigned") patch.status = "published"; await updateAd(ad.id, patch); } finally { setSaving(false); } }
-  return <div className="schedule-link-editor"><div className="schedule-url-box"><LinkSimple size={16} /><input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="رابط إعلان حراج" /></div><button className="icon-button save-link" onClick={() => void save()} disabled={saving}><FloppyDisk size={17} /></button>{ad.url ? <a className="icon-button open-link" href={ad.url} target="_blank" rel="noreferrer"><ArrowSquareOut size={17} /></a> : null}</div>;
-}
+import { PublishingDayAccordion } from "../components/PublishingDayAccordion";
 
 export function SchedulePage() {
   const { accounts, agents, ads, publishingSettings } = useAppData();
-  const [params, setParams] = useSearchParams(); const [exporting, setExporting] = useState(""); const [deleting, setDeleting] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
-  const weekStart = getWeekStartKey(params.get("week") || getWeekStartKey()); const today = dateKey(new Date());
-  const branchById = useMemo(() => new Map(accounts.map((b) => [b.id, b])), [accounts]); const agentById = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
+  const [params, setParams] = useSearchParams();
+  const [exporting, setExporting] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const weekStart = getWeekStartKey(params.get("week") || getWeekStartKey());
+  const today = dateKey(new Date());
+
+  const branchById = useMemo(() => new Map(accounts.map((branch) => [branch.id, branch])), [accounts]);
   const weekAds = useMemo(() => ads.filter((ad) => ad.weekStart === weekStart).sort((a, b) => String(a.scheduledDate || "").localeCompare(String(b.scheduledDate || "")) || Number(a.publishingPeriodOrder || 0) - Number(b.publishingPeriodOrder || 0) || Number(a.periodAgentSequence || 0) - Number(b.periodAgentSequence || 0) || Number(a.scheduleOrder || 0) - Number(b.scheduleOrder || 0)), [ads, weekStart]);
-  const { planStart, planEnd } = getPlanWindowFromAds(weekAds, weekStart); const days = getPlanDays(planStart, planEnd); const capacity = getPublishingPlanCapacity(publishingSettings, planStart, planEnd);
-  const published = weekAds.filter(isPublished).length; const pending = weekAds.filter((ad) => !isPublished(ad) && ad.status !== "closed").length; const overdue = weekAds.filter((ad) => isOverdue(ad, today)).length; const closed = weekAds.filter((ad) => ad.status === "closed").length;
-  const byBranch = useMemo(() => accounts.map((branch) => ({ branch, rows: weekAds.filter((ad) => ad.status !== "closed" && adBranchId(ad) === branch.id), activeAgents: agents.filter((a) => a.active && a.accountId === branch.id).length })).filter((x) => x.rows.length), [accounts, agents, weekAds]);
-  function goWeek(offset: number) { setParams({ week: addDaysKey(weekStart, offset * 7) }); setError(""); setNotice(""); }
-  function selectWeek(value: string) { if (value) setParams({ week: getWeekStartKey(value) }); }
-  async function deleteWholeSchedule() { if (!weekAds.length || deleting) return; setDeleting(true); try { await removeScheduleAds(weekAds.map((ad) => ad.id)); setNotice(`تم حذف جدول النشر بالكامل (${weekAds.length} تكليفًا).`); } catch (e) { setError(e instanceof Error ? e.message : "تعذر حذف الجدول"); } finally { setDeleting(false); } }
+  const { planStart, planEnd } = getPlanWindowFromAds(weekAds, weekStart);
+  const days = getPlanDays(planStart, planEnd);
+  const published = weekAds.filter(isPublished).length;
+  const activeAgents = agents.filter((agent) => agent.active).length;
+  const activeBranches = accounts.filter((branch) => branch.active).length;
+  const firstOpenDay = days.find((day) => day.key === today && weekAds.some((ad) => ad.scheduledDate === day.key))?.key || days.find((day) => weekAds.some((ad) => ad.scheduledDate === day.key))?.key || days[0]?.key || "";
+  const byBranch = useMemo(() => accounts.map((branch) => ({ branch, rows: weekAds.filter((ad) => ad.status !== "closed" && adBranchId(ad) === branch.id) })).filter((item) => item.rows.length), [accounts, weekAds]);
+
+  function goWeek(offset: number) {
+    setParams({ week: addDaysKey(weekStart, offset * 7) });
+    setError("");
+    setNotice("");
+  }
+
+  function selectWeek(value: string) {
+    if (value) setParams({ week: getWeekStartKey(value) });
+  }
+
+  async function deleteWholeSchedule() {
+    if (!weekAds.length || deleting) return;
+    setDeleting(true);
+    try {
+      await removeScheduleAds(weekAds.map((ad) => ad.id));
+      setNotice(`تم حذف جدول النشر بالكامل (${weekAds.length} تكليفًا).`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "تعذر حذف الجدول");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   function exportBranchPdf(branchId: string) {
-    const branch = branchById.get(branchId); if (!branch) return;
-    const root = document.querySelector(`.pdf-export-sheet[data-branch-id="${branchId}"]`); if (!root) return window.alert("تعذر تجهيز ملف PDF");
-    setExporting(branchId); const popup = window.open("", "_blank", "width=920,height=1100"); if (!popup) { setExporting(""); return window.alert("اسمح بفتح النافذة المنبثقة لحفظ PDF."); }
-    popup.document.open(); popup.document.write(`<html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>جدول النشر - ${branch.name}</title></head><body></body></html>`); popup.document.close();
-    document.querySelectorAll('link[rel="stylesheet"], style').forEach((node) => popup.document.head.appendChild(node.cloneNode(true)));
-    const style = popup.document.createElement("style"); style.textContent = `@page{size:A4 portrait;margin:0}html,body{margin:0!important;padding:0!important;width:794px!important;min-width:794px!important;background:#fff!important;overflow:visible!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}*{box-sizing:border-box!important}.pdf-export-sheet{position:static!important;inset:auto!important;width:794px!important;min-width:794px!important;margin:0!important;pointer-events:auto!important;z-index:auto!important}.pdf-page{width:794px!important;min-width:794px!important;max-width:794px!important;height:1123px!important;min-height:1123px!important;max-height:1123px!important;margin:0!important;overflow:hidden!important;break-inside:avoid!important;page-break-inside:avoid!important;page-break-after:always!important;break-after:page!important;transform:none!important;zoom:1!important}.pdf-page:last-child{page-break-after:auto!important;break-after:auto!important}.pdf-page+.pdf-page{page-break-before:always!important;break-before:page!important}img{max-width:100%!important}table{page-break-inside:avoid!important}`; popup.document.head.appendChild(style); popup.document.body.innerHTML = root.outerHTML;
-    const finish = () => { setExporting(""); popup.focus(); popup.print(); }; if (popup.document.fonts?.ready) popup.document.fonts.ready.then(() => setTimeout(finish, 300)); else setTimeout(finish, 650);
+    const branch = branchById.get(branchId);
+    if (!branch) return;
+    const root = document.querySelector(`.pdf-export-sheet[data-branch-id="${branchId}"]`);
+    if (!root) return window.alert("تعذر تجهيز ملف PDF");
+
+    setExporting(branchId);
+    const popup = window.open("", "_blank", "width=920,height=1100");
+    if (!popup) {
+      setExporting("");
+      return window.alert("اسمح بفتح النافذة المنبثقة لحفظ PDF.");
+    }
+
+    popup.document.open();
+    popup.document.write(`<html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><base href="${window.location.origin}/"><title>جدول النشر - ${branch.name}</title></head><body class="pdf-print-body"></body></html>`);
+    popup.document.close();
+
+    const pendingStyles: Promise<void>[] = [];
+    document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]').forEach((source) => {
+      const link = popup.document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = source.href;
+      pendingStyles.push(new Promise((resolve) => { link.onload = () => resolve(); link.onerror = () => resolve(); window.setTimeout(resolve, 2000); }));
+      popup.document.head.appendChild(link);
+    });
+    document.querySelectorAll<HTMLStyleElement>("style").forEach((source) => popup.document.head.appendChild(source.cloneNode(true)));
+
+    const printStyle = popup.document.createElement("style");
+    printStyle.textContent = `@page{size:A4 portrait;margin:0}html,body{margin:0!important;padding:0!important;width:794px!important;min-width:794px!important;background:#fff!important;overflow:visible!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}*{box-sizing:border-box!important}.pdf-export-sheet{position:static!important;visibility:visible!important;inset:auto!important;width:794px!important;min-width:794px!important;margin:0!important;pointer-events:auto!important;z-index:auto!important}.pdf-page{width:794px!important;min-width:794px!important;max-width:794px!important;height:1123px!important;min-height:1123px!important;max-height:1123px!important;margin:0!important;overflow:hidden!important;break-inside:avoid!important;page-break-inside:avoid!important;page-break-after:always!important;break-after:page!important;transform:none!important;zoom:1!important}.pdf-page:last-child{page-break-after:auto!important;break-after:auto!important}.pdf-page+.pdf-page{page-break-before:always!important;break-before:page!important}img{max-width:100%!important}table{page-break-inside:avoid!important}`;
+    popup.document.head.appendChild(printStyle);
+    popup.document.body.innerHTML = root.outerHTML;
+
+    const finish = async () => {
+      await Promise.all(pendingStyles);
+      if (popup.document.fonts?.ready) await popup.document.fonts.ready;
+      window.setTimeout(() => {
+        setExporting("");
+        popup.focus();
+        popup.print();
+      }, 250);
+    };
+    void finish();
   }
 
   return <>
-    <PageTitle title="جدول النشر" subtitle={`حساب حراج واحد: ${publishingSettings.accountName || "غير محدد"}. الجدول مرتب حسب فترات النشر وترتيب المناديب داخل كل فترة. كل مندوب ينسخ العنوان والصيغة، ينشر، ثم يسجل الرابط.`} actions={<div className="schedule-title-actions">{weekAds.length ? <ConfirmButton className="danger-button" confirmText={`حذف جدول النشر بالكامل (${weekAds.length} تكليف)؟`} onConfirm={deleteWholeSchedule}><Trash size={18} />{deleting ? "جارٍ الحذف..." : "حذف الجدول بالكامل"}</ConfirmButton> : null}<div className="week-switcher"><button className="icon-button" onClick={() => goWeek(-1)}><ArrowRight size={19} /></button><label><CalendarBlank size={18} /><input type="date" value={weekStart} onChange={(e) => selectWeek(e.target.value)} /></label><button className="icon-button" onClick={() => goWeek(1)}><ArrowLeft size={19} /></button></div></div>} />
-    {error ? <div className="alert error"><WarningCircle size={19} />{error}</div> : null}{notice ? <div className="alert success"><CheckCircle size={19} />{notice}</div> : null}
-    <section className="week-hero panel"><div><span>فترة النشر</span><h2>{formatPlanRange(planStart, planEnd)}</h2><p>الحد اليومي للحساب كله: {publishingSettings.dailyLimit || 0} إعلان.</p></div><div className="week-hero-stats"><div><span>أيام النشر</span><b>{days.length}</b></div><div><span>سعة الحساب</span><b>{capacity}</b></div><div><span>المجدول</span><b>{weekAds.length}</b></div><div><span>تم النشر</span><b>{published}</b></div></div></section>
-    <section className="stats-grid schedule-stats"><StatCard label="إجمالي التكليفات" value={weekAds.length} tone="info" /><StatCard label="تم النشر" value={published} tone="good" /><StatCard label="بانتظار النشر" value={pending} tone={pending ? "warn" : "good"} /><StatCard label="متأخر" value={overdue} tone={overdue ? "danger" : "good"} /><StatCard label="منتهي" value={closed} /></section>
+    <PageTitle
+      title="جدول النشر"
+      subtitle="كل يوم نشر في مجموعة واحدة. اضغط على اليوم لعرض إعلاناته واضغط مرة أخرى لإغلاقه."
+      actions={<div className="schedule-title-actions"><div className="week-switcher"><button className="icon-button" onClick={() => goWeek(-1)} title="الأسبوع السابق"><ArrowRight size={19} /></button><label><CalendarBlank size={18} /><input type="date" value={weekStart} onChange={(e) => selectWeek(e.target.value)} /></label><button className="icon-button" onClick={() => goWeek(1)} title="الأسبوع التالي"><ArrowLeft size={19} /></button></div></div>}
+    />
 
-    {byBranch.length ? <section className="panel branch-share-panel"><div className="panel-head"><div><h2>PDF لكل مدير فرع</h2><p>الـPDF يعرض تكليفات مناديب الفرع فقط. كل إعلانات اليوم مع بعض، والسياسات في آخر صفحة فقط.</p></div></div><div className="branch-export-grid">{byBranch.map(({ branch, rows, activeAgents }) => <article className="branch-export-card" key={branch.id}><div><span>الفرع</span><strong>{branch.name}</strong><small>{activeAgents} مندوب نشط</small></div><div className="branch-export-numbers"><span>حساب حراج <b>{publishingSettings.accountName || "—"}</b></span><span>اسم المعرض في الإعلان <b>{getBranchAdvertiserName(branch, publishingSettings.accountName)}</b></span><span>تكليفات الفرع <b>{rows.length}</b></span></div><button className="primary-button" onClick={() => exportBranchPdf(branch.id)} disabled={exporting === branch.id}><DownloadSimple size={18} />{exporting === branch.id ? "جارٍ تجهيز PDF..." : "حفظ PDF للفرع"}</button></article>)}</div></section> : null}
+    {error ? <div className="alert error"><WarningCircle size={19} />{error}</div> : null}
+    {notice ? <div className="alert success"><CheckCircle size={19} />{notice}</div> : null}
 
-    {!weekAds.length ? <section className="panel"><EmptyState title="لا يوجد جدول لهذه الفترة" text="جهز جدولًا جديدًا من مخزون السيارات." /></section> : <section className="weekly-board">{days.map((day) => { const dayAds = weekAds.filter((ad) => ad.scheduledDate === day.key); const branchCounts = accounts.map((branch) => ({ branch, count: dayAds.filter((ad) => adBranchId(ad) === branch.id).length })).filter((x) => x.count); return <article className={`day-card ${day.key === today ? "today" : ""}`} key={day.key}><header><div><span>{day.name}</span><strong>{formatDateArabic(day.key, { day: "numeric", month: "short" })}</strong></div><b>{dayAds.length} / {publishingSettings.dailyLimit || 0}</b></header>{branchCounts.length ? <div className="day-branch-summary">{branchCounts.map(({ branch, count }) => <span key={branch.id}>{branch.name}<b>{count}</b></span>)}</div> : null}<div className="day-tasks">{!dayAds.length ? <div className="day-empty">لا توجد إعلانات</div> : dayAds.map((ad) => { const agent = agentById.get(ad.agentId); const branch = branchById.get(adBranchId(ad)); const late = isOverdue(ad, today); const done = isPublished(ad); return <div className={`schedule-task ${late ? "late" : ""} ${done ? "done" : ""}`} key={ad.id}><div className="task-top"><div><strong>{ad.carName}</strong><span>{ad.statement} · {ad.modelYear}</span></div>{late ? <span className="task-flag late"><ClockCountdown size={15} />متأخر</span> : done ? <span className="task-flag done"><CheckCircle size={15} />تم</span> : <span className="task-flag">مجدول</span>}</div><div className="task-meta"><span>فترة النشر <b>{ad.publishingPeriodName || "—"}</b></span><span>الوقت <b className="ltr-value">{ad.publishingPeriodStart && ad.publishingPeriodEnd ? `${ad.publishingPeriodStart} - ${ad.publishingPeriodEnd}` : "—"}</b></span><span>الاسم <b>{agent?.name || ad.agentNameSnapshot || "محذوف"}</b></span><span>النوع <b>{ad.agentTypeSnapshot === "installment" ? "تقسيط" : "كاش"}</b></span><span>الفرع <b>{branch?.name || "غير محدد"}</b></span><span>حساب حراج <b>{ad.harajAccountName || publishingSettings.accountName || "—"}</b></span><span>اسم المعرض <b>{ad.advertiserName || getBranchAdvertiserName(branch, publishingSettings.accountName)}</b></span></div><AdCopyCard ad={ad} compact /><div className="task-controls"><select className={`status-select ${ad.status}`} value={ad.status} onChange={(e) => void updateAd(ad.id, { status: e.target.value as AdStatus })}>{statuses.map((s) => <option key={s} value={s}>{AD_STATUS_LABELS[s]}</option>)}</select><LinkEditor ad={ad} /></div></div>; })}</div></article>; })}</section>}
+    <section className="schedule-overview">
+      <article className="schedule-overview-card featured"><div className="overview-icon"><ClipboardText size={24} weight="duotone" /></div><div><span>إجمالي إعلانات الجدول</span><strong>{weekAds.length}</strong><small>{formatPlanRange(planStart, planEnd)}</small></div></article>
+      <article className="schedule-overview-card"><div className="overview-icon"><CalendarBlank size={24} weight="duotone" /></div><div><span>الحد اليومي للحساب</span><strong>{publishingSettings.dailyLimit || 0}</strong><small>{days.length} أيام نشر</small></div></article>
+      <article className="schedule-overview-card"><div className="overview-icon"><UsersThree size={24} weight="duotone" /></div><div><span>المناديب النشطون</span><strong>{activeAgents}</strong><small>موزعون حسب فترات النشر</small></div></article>
+      <article className="schedule-overview-card"><div className="overview-icon"><Storefront size={24} weight="duotone" /></div><div><span>الفروع النشطة</span><strong>{activeBranches}</strong><small>{published} إعلان تم نشره</small></div></article>
+    </section>
+
+    <section className="schedule-control-bar panel">
+      <div className="schedule-account-summary"><span>حساب حراج المستخدم</span><strong>{publishingSettings.accountName || "غير محدد"}</strong><small>ملف PDF مستقل لكل فرع — بدون معاينة داخل الصفحة</small></div>
+      <div className="schedule-pdf-actions">{byBranch.map(({ branch, rows }) => <button key={branch.id} className="secondary-button pdf-branch-button" onClick={() => exportBranchPdf(branch.id)} disabled={exporting === branch.id}><DownloadSimple size={17} />{exporting === branch.id ? "جارٍ التجهيز..." : `PDF ${branch.name}`}<span>{rows.length}</span></button>)}</div>
+      {weekAds.length ? <ConfirmButton className="danger-button schedule-delete-button" confirmText={`حذف جدول النشر بالكامل (${weekAds.length} تكليف)؟`} onConfirm={deleteWholeSchedule}><Trash size={17} />{deleting ? "جارٍ الحذف..." : "حذف الجدول"}</ConfirmButton> : null}
+    </section>
+
+    {!weekAds.length ? <section className="panel"><EmptyState title="لا يوجد جدول لهذه الفترة" text="جهز جدولًا جديدًا من مخزون السيارات." /></section> : <section className="publishing-days-list">{days.map((day) => {
+      const dayAds = weekAds.filter((ad) => ad.scheduledDate === day.key);
+      return <PublishingDayAccordion
+        key={day.key}
+        dayKey={day.key}
+        dayLabel={day.name}
+        dateLabel={formatDateArabic(day.key, { day: "numeric", month: "long", year: "numeric" })}
+        ads={dayAds}
+        branches={accounts}
+        agents={agents}
+        publishingSettings={publishingSettings}
+        defaultOpen={day.key === firstOpenDay}
+      />;
+    })}</section>}
 
     {byBranch.map(({ branch, rows }) => <BranchSchedulePdf key={`pdf-${branch.id}`} branch={branch} ads={rows} agents={agents} publishingSettings={publishingSettings} planStart={planStart} planEnd={planEnd} />)}
   </>;

@@ -16,12 +16,12 @@ function fallbackCopy(text: string) {
 
 function clean(value: unknown) { return String(value ?? "").trim(); }
 
-function formatPrice(value: number) {
+export function formatPublishingPrice(value: number) {
   if (!Number.isFinite(value) || value <= 0) return "";
   return new Intl.NumberFormat("ar-SA-u-nu-latn", { maximumFractionDigits: 0 }).format(value);
 }
 
-function normalizeAdTextForPublishing(value: unknown, price: string) {
+export function normalizeAdTextForPublishing(value: unknown, price: string) {
   let text = clean(value)
     .replace(/(^|\n)المندوب:\s*/g, "$1")
     .replace(/(^|\n)متوفرة الآن لدى[^\n]*/g, "$1متوفرة الآن")
@@ -37,12 +37,22 @@ function normalizeAdTextForPublishing(value: unknown, price: string) {
   return text.trim();
 }
 
+
+export function getPublishingAdText(ad: HarajAd) {
+  const price = formatPublishingPrice(Number(ad.websitePrice || 0));
+  return normalizeAdTextForPublishing(ad.adText, price);
+}
+
+export function getPublishingPrice(ad: HarajAd) {
+  return formatPublishingPrice(Number(ad.websitePrice || 0));
+}
+
 export function AdCopyCard({ ad, compact = false }: { ad: HarajAd; compact?: boolean }) {
   const [copiedKey, setCopiedKey] = useState("");
   const agentName = clean(ad.agentNameSnapshot);
   const agentPhone = clean(ad.agentPhoneSnapshot);
   const numericPrice = Number(ad.websitePrice || 0);
-  const price = formatPrice(numericPrice);
+  const price = formatPublishingPrice(numericPrice);
   const text = normalizeAdTextForPublishing(ad.adText, price);
   const title = clean(ad.adTitle);
   const compareKeyReady = ad.specsStatus === "matched";

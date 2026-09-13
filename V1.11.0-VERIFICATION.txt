@@ -1,0 +1,14 @@
+MZJ Haraj Manager v1.11.0 CLEAN - verification
+
+1) Source base: user-supplied MZJ-Haraj-Manager-Vercel-GitHub-v1.10.0-CLEAN.
+2) Schedule and Ads pages were rebuilt around one shared daily-accordion component.
+3) Daily accordion behavior: click day -> open all ads; click again -> close.
+4) No interior/exterior color columns are rendered in Schedule or Ads pages.
+5) Schedule row keeps publishing period, time, vehicle, rep/branch, cash/installment type, title, status, Haraj URL and copy actions.
+6) Ads page keeps filters, URL/notes editing and delete control.
+7) PDF remains branch-specific and invisible inside the app UI.
+8) PDF print window now loads stylesheet URLs as absolute resources before printing.
+9) PDF table defines all 7 column widths explicitly and uses compact typography.
+10) PDF keeps up to 18 ads from the same day on one A4 page before continuation is required.
+11) Modified TS/TSX files passed a TypeScript transpile/syntax pass using TypeScript 5.8.3.
+12) Full npm install/build was not completed because dependency installation timed out in this environment.

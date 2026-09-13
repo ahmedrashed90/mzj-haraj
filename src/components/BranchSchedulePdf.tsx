@@ -17,7 +17,7 @@ const FOLLOW_UP = [
   "إبلاغ الإدارة فورًا بأي قيد أو انخفاض في حد النشر أو مشكلة تؤثر على جودة الحساب.",
   "إرسال رابط كل إعلان بعد النشر حتى يتم تسجيله ومراجعته في النظام.",
 ];
-const MAX_ROWS_PER_DAY_PAGE = 13;
+const MAX_ROWS_PER_DAY_PAGE = 18;
 type PlanDay = ReturnType<typeof getPlanDays>[number];
 type PdfPage = { kind: "schedule"; day: PlanDay; rows: HarajAd[]; segmentIndex: number; segmentCount: number } | { kind: "guidance" };
 function splitRows<T>(rows: T[], size: number) { const out: T[][] = []; for (let i = 0; i < rows.length; i += size) out.push(rows.slice(i, i + size)); return out; }
@@ -58,7 +58,7 @@ export function BranchSchedulePdf({ branch, ads, agents, publishingSettings, pla
       <Header branch={branch} publishing={publishingSettings} planStart={planStart} planEnd={planEnd} />
       <div className="pdf-day-banner"><div><span>{page.segmentIndex ? "استكمال إعلانات اليوم" : "إعلانات اليوم"}</span><h2>{page.day.name} — {formatDateArabic(page.day.key, { day: "numeric", month: "long", year: "numeric" })}</h2></div><div className="pdf-day-metrics"><span>حد حساب حراج للشركة <b>{publishingSettings.dailyLimit}</b></span><span>إعلانات الفرع اليوم <b>{fullDayCount}</b></span><span>مناديب الفرع المشاركون <b>{reps}</b></span></div></div>
       {page.segmentCount > 1 ? <div className="pdf-continuation-strip">استكمال اليوم نفسه — جزء {page.segmentIndex + 1} من {page.segmentCount}</div> : null}
-      <table className={`pdf-table pdf-day-table ${page.rows.length >= 11 ? "pdf-table-dense" : ""}`}><thead><tr><th>الفترة</th><th>الوقت</th><th>الاسم</th><th>النوع</th><th>السيارة / البيان</th><th>الموديل</th><th>رابط الإعلان</th></tr></thead><tbody>{page.rows.map((ad) => <tr key={ad.id}><td>{ad.publishingPeriodName || "—"}</td><td className="ltr-cell">{ad.publishingPeriodStart && ad.publishingPeriodEnd ? `${ad.publishingPeriodStart}-${ad.publishingPeriodEnd}` : "—"}</td><td>{agentById.get(ad.agentId)?.name || ad.agentNameSnapshot || "—"}</td><td>{ad.agentTypeSnapshot === "installment" ? "تقسيط" : "كاش"}</td><td><b>{ad.carName}</b><small className="pdf-cell-sub">{ad.statement}</small></td><td>{ad.modelYear}</td><td className={isPublished(ad) ? "pdf-done" : "pdf-link-placeholder"}>{isPublished(ad) ? "تم استلام الرابط" : "يرسل بعد النشر"}</td></tr>)}</tbody></table>
+      <table className={`pdf-table pdf-day-table ${page.rows.length >= 12 ? "pdf-table-dense" : ""}`}><thead><tr><th>الفترة</th><th>الوقت</th><th>الاسم</th><th>النوع</th><th>السيارة / البيان</th><th>الموديل</th><th>رابط الإعلان</th></tr></thead><tbody>{page.rows.map((ad) => <tr key={ad.id}><td>{ad.publishingPeriodName || "—"}</td><td className="ltr-cell">{ad.publishingPeriodStart && ad.publishingPeriodEnd ? `${ad.publishingPeriodStart}-${ad.publishingPeriodEnd}` : "—"}</td><td>{agentById.get(ad.agentId)?.name || ad.agentNameSnapshot || "—"}</td><td>{ad.agentTypeSnapshot === "installment" ? "تقسيط" : "كاش"}</td><td><b>{ad.carName}</b><small className="pdf-cell-sub">{ad.statement}</small></td><td>{ad.modelYear}</td><td className={isPublished(ad) ? "pdf-done" : "pdf-link-placeholder"}>{isPublished(ad) ? "تم استلام الرابط" : "يرسل بعد النشر"}</td></tr>)}</tbody></table>
       <div className="pdf-day-note"><span>إعلانات {branch.name} في {page.day.name}: <b>{fullDayCount}</b></span><span>هذه تكليفات مناديب الفرع الناتجة من فترات النشر وترتيب المناديب المحدد لكل فترة.</span></div>
       <Footer pageNumber={pageNo} totalPages={totalPages} />
     </section>;

@@ -1,4 +1,4 @@
-MZJ Haraj Manager v1.10.0 CLEAN
+MZJ Haraj Manager v1.11.0 CLEAN
 
 CORE RULES
 - One actual Haraj account and one company daily limit.
@@ -32,3 +32,13 @@ FIRESTORE
 WORDPRESS BRIDGE
 - MZJ Haraj Ad Data Bridge v1.1.0
 - Read-only endpoint /wp-json/mzj-haraj/v1/cars
+
+
+V1.11.0 UI / PDF
+- Schedule page rebuilt as full-width daily accordions.
+- One click opens all ads for a day; second click closes them.
+- Ads page uses the same daily accordion pattern.
+- Interior/exterior color columns are not displayed.
+- PDF preview is not rendered visibly in the app; export goes directly to browser print/save.
+- PDF column widths and stylesheet loading were corrected.
+- Up to 18 assignments from the same day stay together on one PDF page.
