@@ -21,13 +21,29 @@ function formatPrice(value: number) {
   return new Intl.NumberFormat("ar-SA-u-nu-latn", { maximumFractionDigits: 0 }).format(value);
 }
 
+function normalizeAdTextForPublishing(value: unknown, price: string) {
+  let text = clean(value)
+    .replace(/(^|\n)المندوب:\s*/g, "$1")
+    .replace(/(^|\n)متوفرة الآن لدى[^\n]*/g, "$1متوفرة الآن")
+    .replace(/(^|\n)السعر:\s*[^\n]*/g, "$1")
+    .replace(/(^|\n)السعر شامل الضريبة:\s*[^\n]*/g, "$1")
+    .replace(/(^|\n)احصل على الخصم والهدايا عند التواصل\s*/g, "$1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (price) {
+    text = `${text}\n\nالسعر شامل الضريبة: ${price} ريال\nاحصل على الخصم والهدايا عند التواصل`;
+  }
+  return text.trim();
+}
+
 export function AdCopyCard({ ad, compact = false }: { ad: HarajAd; compact?: boolean }) {
   const [copiedKey, setCopiedKey] = useState("");
-  const text = clean(ad.adText);
   const agentName = clean(ad.agentNameSnapshot);
   const agentPhone = clean(ad.agentPhoneSnapshot);
   const numericPrice = Number(ad.websitePrice || 0);
   const price = formatPrice(numericPrice);
+  const text = normalizeAdTextForPublishing(ad.adText, price);
   const compareKeyReady = ad.specsStatus === "matched";
   const contactReady = Boolean(agentName && agentPhone);
   const priceReady = Boolean(price);
@@ -54,7 +70,7 @@ export function AdCopyCard({ ad, compact = false }: { ad: HarajAd; compact?: boo
 
   return <div className={`ad-copy-card ${compact ? "compact-copy" : ""}`}>
     <div className="ad-publish-values">
-      <div className="ad-publish-value"><span>المندوب</span><b>{agentName || "—"}</b><button type="button" className="copy-mini-button" disabled={!agentName} onClick={() => void copyValue("agent", agentName)}>{copiedKey === "agent" ? <Check size={14} /> : <Copy size={14} />}<em>{copiedKey === "agent" ? "تم" : "نسخ"}</em></button></div>
+      <div className="ad-publish-value"><span>الاسم</span><b>{agentName || "—"}</b><button type="button" className="copy-mini-button" disabled={!agentName} onClick={() => void copyValue("agent", agentName)}>{copiedKey === "agent" ? <Check size={14} /> : <Copy size={14} />}<em>{copiedKey === "agent" ? "تم" : "نسخ"}</em></button></div>
       <div className="ad-publish-value"><span>رقم الجوال</span><b className="ltr-value">{agentPhone || "—"}</b><button type="button" className="copy-mini-button" disabled={!agentPhone} onClick={() => void copyValue("phone", agentPhone)}>{copiedKey === "phone" ? <Check size={14} /> : <Copy size={14} />}<em>{copiedKey === "phone" ? "تم" : "نسخ"}</em></button></div>
       <div className="ad-publish-value"><span>السعر في حراج</span><b>{price ? `${price} ريال` : "—"}</b><button type="button" className="copy-mini-button" disabled={!price} onClick={() => void copyValue("price", price)}>{copiedKey === "price" ? <Check size={14} /> : <Copy size={14} />}<em>{copiedKey === "price" ? "تم" : "نسخ"}</em></button></div>
     </div>

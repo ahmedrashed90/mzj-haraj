@@ -3,7 +3,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../AuthContext";
 import logo from "../assets/mzj-logo.png";
 
-const APP_VERSION = "v1.9.1";
+const APP_VERSION = "v1.9.3";
 const links = [
   { to: "/", label: "لوحة التحكم", icon: ChartPieSlice },
   { to: "/inventory", label: "مخزون السيارات", icon: CarProfile },

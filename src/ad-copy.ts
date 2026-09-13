@@ -151,17 +151,23 @@ export function buildAdCopy(
   agentName?: string,
   agentPhone?: string,
 ) {
-  const accountName = clean(advertiserName) || clean(settings.accountName) || "حساب حراج";
+  // advertiserName/settings are intentionally kept in the function contract for
+  // the existing assignment snapshot/configuration, but the Haraj ad body itself
+  // now uses the neutral availability line requested by Operations.
+  void advertiserName;
+  void settings;
   const contactName = clean(agentName);
   const contactPhone = clean(agentPhone);
   const title = goodValue(websiteCar?.title) || [stock.carName, stock.statement, stock.modelYear].filter(goodValue).join(" - ");
-  const lines: string[] = [title, "", `متوفرة الآن لدى ${accountName}.`];
+  const lines: string[] = [title, "", "متوفرة الآن"];
+  let formattedPrice = "";
 
   if (websiteCar) {
-    const price = formatPrice(websiteCar.price);
-    if (price) lines.push("", `السعر: ${price} ريال`);
-    if (goodValue(stock.modelYear)) lines.push(`الموديل: ${stock.modelYear}`);
-    if (goodValue(websiteCar.trim || stock.statement)) lines.push(`الفئة: ${goodValue(websiteCar.trim || stock.statement)}`);
+    formattedPrice = formatPrice(websiteCar.price);
+    const identityLines: string[] = [];
+    if (goodValue(stock.modelYear)) identityLines.push(`الموديل: ${stock.modelYear}`);
+    if (goodValue(websiteCar.trim || stock.statement)) identityLines.push(`الفئة: ${goodValue(websiteCar.trim || stock.statement)}`);
+    if (identityLines.length) lines.push("", ...identityLines);
 
     const baseSpecs = buildBaseSpecLines(websiteCar);
     if (baseSpecs.length) lines.push("", "المواصفات الرئيسية:", ...baseSpecs.map((item) => `• ${item}`));
@@ -181,8 +187,16 @@ export function buildAdCopy(
 
   if (contactName || contactPhone) {
     lines.push("", "للتواصل:");
-    if (contactName) lines.push(`المندوب: ${contactName}`);
+    if (contactName) lines.push(contactName);
     if (contactPhone) lines.push(`رقم الجوال: ${contactPhone}`);
+  }
+
+  // Price is intentionally the final commercial block in the copy so it can be
+  // pasted into Haraj exactly as requested. The price remains the real website
+  // price snapshot; no discount amount is invented here.
+  if (formattedPrice) {
+    lines.push("", `السعر شامل الضريبة: ${formattedPrice} ريال`);
+    lines.push("احصل على الخصم والهدايا عند التواصل");
   }
 
   const specState = getCompareKeyState(websiteCar);

@@ -1,4 +1,4 @@
-MZJ Haraj Manager v1.9.1 CLEAN
+MZJ Haraj Manager v1.9.3 CLEAN
 
 CORE RULES
 - One actual Haraj account for the company.
