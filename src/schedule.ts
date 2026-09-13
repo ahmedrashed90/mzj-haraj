@@ -1,4 +1,5 @@
 import type { Agent, HarajAccount, HarajAd, PublishingSettings, StockGroup } from "./types";
+import { getBranchAdvertiserName } from "./branch-advertiser";
 
 const DAY_NAME_BY_JS_INDEX = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"] as const;
 export const WEEK_DAY_NAMES = ["السبت", "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة"] as const;
@@ -98,6 +99,40 @@ type BuildInput = {
   existingAds: HarajAd[];
   requestedCount?: number;
 };
+
+type VehicleTarget = { vehicle: StockGroup; coverageCycle: number };
+
+function buildVehicleTargets(vehicles: StockGroup[], existingAds: HarajAd[], startCycle: number, requested: number): VehicleTarget[] {
+  const uniqueMap = new Map<string, StockGroup>();
+  vehicles.forEach((row) => { if (row?.key && !uniqueMap.has(row.key)) uniqueMap.set(row.key, row); });
+  const pool = [...uniqueMap.values()].sort((a, b) => a.carName.localeCompare(b.carName, "ar") || a.statement.localeCompare(b.statement, "ar") || a.modelYear.localeCompare(b.modelYear, "ar"));
+  if (!pool.length || requested <= 0) return [];
+
+  const result: VehicleTarget[] = [];
+  let cycle = Math.max(1, Math.floor(Number(startCycle || 1)));
+  const usedByCycle = new Map<number, Set<string>>();
+
+  while (result.length < requested) {
+    if (!usedByCycle.has(cycle)) {
+      const covered = new Set(existingAds
+        .filter((ad) => countsForCoverage(ad) && getCoverageCycle(ad) === cycle)
+        .map((ad) => ad.vehicleKey));
+      usedByCycle.set(cycle, covered);
+    }
+    const used = usedByCycle.get(cycle)!;
+    const remaining = pool.filter((vehicle) => !used.has(vehicle.key));
+    if (!remaining.length) {
+      cycle += 1;
+      continue;
+    }
+    for (const vehicle of remaining) {
+      if (result.length >= requested) break;
+      result.push({ vehicle, coverageCycle: cycle });
+      used.add(vehicle.key);
+    }
+  }
+  return result;
+}
 
 function buildBranchPools(branches: HarajAccount[], agents: Agent[]) {
   const activeBranches = branches.filter((branch) => branch.active !== false).sort((a, b) => a.name.localeCompare(b.name, "ar"));
@@ -212,13 +247,13 @@ function makeBranchSlots(
 }
 
 /**
- * Publishing model v1.8:
+ * Publishing model v1.9:
  * - One Haraj account owns the company daily publishing limit.
  * - Every day is filled up to that limit before moving to the next day.
  * - The day's ads are split between active branches according to the number of
  *   active reps in each branch.
  * - Each branch share is then balanced between reps of that branch only.
- * - A vehicle group is never repeated inside the generated plan.
+ * - A vehicle is never repeated inside the same coverage cycle. After all eligible cars are used, a new cycle starts so every publishing day can still reach its daily limit.
  */
 export function buildPublishingAssignments({ vehicles, planStart, planEnd, coverageCycle, settings, branches, agents, existingAds, requestedCount }: BuildInput) {
   const days = getPlanDays(planStart, planEnd);
@@ -235,13 +270,15 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
   const uniqueVehicleMap = new Map<string, StockGroup>();
   vehicles.forEach((row) => { if (row?.key && !uniqueVehicleMap.has(row.key)) uniqueVehicleMap.set(row.key, row); });
   const uniqueVehicles = [...uniqueVehicleMap.values()].sort((a, b) => a.carName.localeCompare(b.carName, "ar") || a.statement.localeCompare(b.statement, "ar") || a.modelYear.localeCompare(b.modelYear, "ar"));
-  if (!uniqueVehicles.length) throw new Error("لا توجد سيارات جديدة متاحة للتكليف.");
+  if (!uniqueVehicles.length) throw new Error("لا توجد سيارات مؤهلة بـ CompareKey للتكليف.");
 
   const remainingByDay = new Map<string, number>();
   days.forEach((day) => remainingByDay.set(day.key, Math.max(0, dailyLimit - getPublishingDailyUsage(existingAds, day.key))));
   const totalRemaining = [...remainingByDay.values()].reduce((sum, value) => sum + value, 0);
-  const requested = Math.min(uniqueVehicles.length, totalRemaining, Math.max(0, Math.floor(Number(requestedCount ?? uniqueVehicles.length))));
-  if (!requested) throw new Error("لا توجد سعة متبقية أو سيارات جديدة لإنشاء الجدول.");
+  const requested = Math.min(totalRemaining, Math.max(0, Math.floor(Number(requestedCount ?? totalRemaining))));
+  if (!requested) throw new Error("لا توجد سعة متبقية لإنشاء الجدول.");
+  const vehicleTargets = buildVehicleTargets(uniqueVehicles, existingAds, coverageCycle, requested);
+  if (vehicleTargets.length !== requested) throw new Error("تعذر تجهيز دورة تغطية السيارات.");
 
   const periodAds = getPlanAds(existingAds, planStart, planEnd);
   const periodBranchCounts = new Map<string, number>();
@@ -285,7 +322,8 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
   const weekStart = getWeekStartKey(planStart);
   const planId = `plan-${planStart}-${planEnd}-${Date.now()}`;
 
-  return uniqueVehicles.slice(0, requested).map((vehicle, index): PublishingAssignmentDraft => {
+  return vehicleTargets.map((target, index): PublishingAssignmentDraft => {
+    const vehicle = target.vehicle;
     const slot = slots[index];
     const pool = poolByBranch.get(slot.branchId);
     if (!pool) throw new Error("تعذر تحديد فرع التكليف.");
@@ -312,6 +350,7 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
       branchId: slot.branchId,
       agentId: chosen.agent.id,
       harajAccountName: accountName,
+      advertiserName: getBranchAdvertiserName(pool.branch, accountName),
       status: "assigned",
       url: "",
       notes: "",
@@ -319,7 +358,7 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
       planStart,
       planEnd,
       scheduledDate: slot.day.key,
-      coverageCycle,
+      coverageCycle: target.coverageCycle,
       planId,
       scheduleOrder: index + 1,
     };

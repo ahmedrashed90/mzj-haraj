@@ -123,7 +123,7 @@ function categoryBlock(title: string, values: string[], maxItems = 12) {
   return `${title}:\n${items.map((item) => `• ${item}`).join("\n")}`;
 }
 
-function compareKeyStatus(car: WebsiteCarData | null) {
+export function getCompareKeyState(car: WebsiteCarData | null) {
   if (!car) return { status: "missing" as SpecsStatus, issue: "لم يتم العثور على سيارة مطابقة مؤكدة في الموقع." };
   if (!goodValue(car.compareKey)) return { status: "missing" as SpecsStatus, issue: "CompareKey ناقص في سيارة الموقع." };
   if (!car.compareKeyFound || car.compareKeyStatus !== "found") {
@@ -143,8 +143,8 @@ function compareKeyStatus(car: WebsiteCarData | null) {
   return { status: "matched" as SpecsStatus, issue: "" };
 }
 
-export function buildAdCopy(stock: StockGroup, websiteCar: WebsiteCarData | null, settings: PublishingSettings) {
-  const accountName = clean(settings.accountName) || "حساب حراج";
+export function buildAdCopy(stock: StockGroup, websiteCar: WebsiteCarData | null, settings: PublishingSettings, advertiserName?: string) {
+  const accountName = clean(advertiserName) || clean(settings.accountName) || "حساب حراج";
   const title = goodValue(websiteCar?.title) || [stock.carName, stock.statement, stock.modelYear].filter(goodValue).join(" - ");
   const lines: string[] = [title, "", `متوفرة الآن لدى ${accountName}.`];
 
@@ -170,7 +170,7 @@ export function buildAdCopy(stock: StockGroup, websiteCar: WebsiteCarData | null
     if (goodValue(stock.statement)) lines.push(`الفئة: ${stock.statement}`);
   }
 
-  const specState = compareKeyStatus(websiteCar);
+  const specState = getCompareKeyState(websiteCar);
   return {
     adTitle: title,
     adText: lines.join("\n").replace(/\n{3,}/g, "\n\n").trim(),
@@ -206,6 +206,6 @@ export function enrichAssignmentsWithAdCopy<T extends Omit<HarajAd, "id">>(
       quantity: assignment.stockQtySnapshot,
     };
     const websiteCar = matchWebsiteCar(row, websiteCars);
-    return { ...assignment, ...buildAdCopy(row, websiteCar, settings) };
+    return { ...assignment, ...buildAdCopy(row, websiteCar, settings, assignment.advertiserName) };
   });
 }

@@ -1,22 +1,26 @@
-MZJ Haraj Manager v1.8.0 CLEAN
+MZJ Haraj Manager v1.9.0 CLEAN
 
 CORE RULES
-- One Haraj account for the company.
+- One actual Haraj account for the company.
 - One company daily limit.
-- Fill each publishing day up to available daily capacity before moving to the next day.
-- Split the day's ads across active branches according to active rep count.
+- Each branch has its own editable advertiserName used inside generated ad copy.
+- Default advertiser names:
+  * الملتقى = شركة الملتقى للسيارات
+  * الصالة = معرض محمد ذعار العجمي للسيارات
+  * القادسية = معرض محمد العجمى للسيارات
+- Fill every publishing day to available daily capacity.
+- Split each day's ads across active branches according to active rep count.
 - Split each branch share only across reps of that branch.
-- No duplicate vehicle group inside a coverage cycle.
+- No vehicle repeats inside the same coverage cycle; start a new cycle after all eligible vehicles are covered.
+- Cars without a complete CompareKey are excluded from selection and automatic scheduling.
 - Agency-location stock remains excluded.
 
 AD COPY / COMPAREKEY
 - Interior specs: CompareKey only.
 - Exterior specs: CompareKey only.
 - Safety specs: CompareKey only.
-- Missing/not-found/incomplete CompareKey blocks schedule approval and copy action.
-- Haraj account name is dynamic inside the generated ad copy.
+- Generated phrase uses branch advertiserName, not the actual Haraj login/account name.
 
 WORDPRESS BRIDGE
 - MZJ Haraj Ad Data Bridge v1.1.0
 - Read-only endpoint /wp-json/mzj-haraj/v1/cars
-- Reports compare_key_status + compare_key_found.

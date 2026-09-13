@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { ArrowClockwise, CalendarBlank, CheckCircle, CheckSquare, MagnifyingGlass, Plus, SquaresFour, WarningCircle } from "@phosphor-icons/react";
 import { useNavigate } from "react-router-dom";
 import { useAppData } from "../AppDataContext";
-import { enrichAssignmentsWithAdCopy } from "../ad-copy";
+import { enrichAssignmentsWithAdCopy, getCompareKeyState, matchWebsiteCar } from "../ad-copy";
 import { createPublishingAssignments } from "../data";
 import {
   buildPublishingAssignments,
@@ -33,6 +33,8 @@ export function InventoryPage() {
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [draftKeys, setDraftKeys] = useState<Set<string>>(new Set());
   const [showPlan, setShowPlan] = useState(false);
+  const [planAutomatic, setPlanAutomatic] = useState(false);
+  const [planRequestedCount, setPlanRequestedCount] = useState(0);
   const [planStart, setPlanStart] = useState("");
   const [planEnd, setPlanEnd] = useState("");
   const [saving, setSaving] = useState(false);
@@ -40,7 +42,15 @@ export function InventoryPage() {
 
   const suggested = getSuggestedPlanWindow();
   const suggestedDays = getPlanDays(suggested.planStart, suggested.planEnd).length;
-  const coverageState = useMemo(() => getCoverageState(stock, ads), [stock, ads]);
+  const websiteMatchByStockKey = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof matchWebsiteCar>>();
+    stock.forEach((row) => map.set(row.key, matchWebsiteCar(row, websiteCars)));
+    return map;
+  }, [stock, websiteCars]);
+  const compareKeyReadyStock = useMemo(() => stock.filter((row) => getCompareKeyState(websiteMatchByStockKey.get(row.key) || null).status === "matched"), [stock, websiteMatchByStockKey]);
+  const compareKeyReadySet = useMemo(() => new Set(compareKeyReadyStock.map((row) => row.key)), [compareKeyReadyStock]);
+  const compareKeyExcludedCount = Math.max(0, stock.length - compareKeyReadyStock.length);
+  const coverageState = useMemo(() => getCoverageState(compareKeyReadyStock, ads), [compareKeyReadyStock, ads]);
   const eligibleSet = useMemo(() => new Set(coverageState.eligibleRows.map((row) => row.key)), [coverageState.eligibleRows]);
   const activeBranchIds = useMemo(() => new Set(accounts.filter((branch) => branch.active !== false).map((branch) => branch.id)), [accounts]);
   const activeAgents = agents.filter((agent) => agent.active && agent.accountId && activeBranchIds.has(agent.accountId));
@@ -49,7 +59,8 @@ export function InventoryPage() {
   const dailyLimit = Math.max(0, Number(publishingSettings.dailyLimit || 0));
   const periodCapacity = getPublishingPlanCapacity(publishingSettings, suggested.planStart, suggested.planEnd);
   const remainingCapacity = getPublishingRemainingCapacity(publishingSettings, ads, suggested.planStart, suggested.planEnd);
-  const automaticTarget = Math.min(remainingCapacity, coverageState.eligibleRows.length);
+  const automaticTarget = compareKeyReadyStock.length ? remainingCapacity : 0;
+  const automaticUniqueSelectionCount = Math.min(remainingCapacity, coverageState.eligibleRows.length);
 
   const rows = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -61,7 +72,7 @@ export function InventoryPage() {
     });
   }, [stock, eligibleSet, coverage, search]);
   const selectedRows = useMemo(() => stock.filter((row) => selectedKeys.has(row.key) && eligibleSet.has(row.key)), [stock, selectedKeys, eligibleSet]);
-  const draftRows = useMemo(() => stock.filter((row) => draftKeys.has(row.key) && eligibleSet.has(row.key)), [stock, draftKeys, eligibleSet]);
+  const draftRows = useMemo(() => stock.filter((row) => draftKeys.has(row.key) && compareKeyReadySet.has(row.key)), [stock, draftKeys, compareKeyReadySet]);
   const latestByVehicle = useMemo(() => {
     const map = new Map<string, (typeof ads)[number]>();
     ads.forEach((ad) => {
@@ -86,7 +97,6 @@ export function InventoryPage() {
     if (dailyLimit < 1) return "حدد الحد اليومي لحساب حراج أولًا.";
     if (!activeBranches.length || !activeAgents.length) return "لا يوجد فرع نشط به مناديب نشطون.";
     if (!rowsToPlan.length) return "لا توجد سيارات جديدة متاحة للتكليف.";
-    if (rowsToPlan.length > remainingCapacity) return `عدد السيارات (${rowsToPlan.length}) أكبر من السعة المتبقية للفترة (${remainingCapacity}).`;
     return "";
   }
   function openManual() {
@@ -94,18 +104,22 @@ export function InventoryPage() {
     const window = getSuggestedPlanWindow();
     setPlanStart(window.planStart); setPlanEnd(window.planEnd);
     setDraftKeys(new Set(selectedRows.map((r) => r.key)));
+    setPlanAutomatic(false);
+    setPlanRequestedCount(selectedRows.length);
     setShowPlan(true); setError("");
   }
   function openAutomatic() {
-    const candidates = sortRows(coverageState.eligibleRows).slice(0, automaticTarget);
+    const candidates = sortRows(compareKeyReadyStock);
     const issue = validate(candidates); if (issue) return setError(issue);
     const window = getSuggestedPlanWindow();
     setPlanStart(window.planStart); setPlanEnd(window.planEnd);
     setDraftKeys(new Set(candidates.map((r) => r.key)));
+    setPlanAutomatic(true);
+    setPlanRequestedCount(automaticTarget);
     setShowPlan(true); setError("");
   }
   function selectAutomaticRows() {
-    setSelectedKeys(new Set(sortRows(coverageState.eligibleRows).slice(0, automaticTarget).map((r) => r.key)));
+    setSelectedKeys(new Set(sortRows(coverageState.eligibleRows).slice(0, automaticUniqueSelectionCount).map((r) => r.key)));
   }
 
   const basePreview = useMemo(() => {
@@ -121,14 +135,14 @@ export function InventoryPage() {
           branches: accounts,
           agents,
           existingAds: ads,
-          requestedCount: draftRows.length,
+          requestedCount: planRequestedCount || draftRows.length,
         }),
         error: "",
       };
     } catch (e) {
       return { rows: [] as ReturnType<typeof buildPublishingAssignments>, error: e instanceof Error ? e.message : "تعذر تجهيز الجدول" };
     }
-  }, [showPlan, planStart, planEnd, draftRows, coverageState.cycle, publishingSettings, accounts, agents, ads]);
+  }, [showPlan, planStart, planEnd, draftRows, planRequestedCount, coverageState.cycle, publishingSettings, accounts, agents, ads]);
 
   const previewRows = useMemo(() => enrichAssignmentsWithAdCopy(basePreview.rows, stock, websiteCars, publishingSettings), [basePreview.rows, stock, websiteCars, publishingSettings]);
   const days = planStart && planEnd ? getPlanDays(planStart, planEnd) : [];
@@ -155,16 +169,16 @@ export function InventoryPage() {
     if (basePreview.error) return setError(basePreview.error);
     if (!previewRows.length) return setError("لا توجد تكليفات جاهزة للحفظ.");
     if (notReady) return setError(`يوجد ${notReady} إعلان غير جاهز. يجب أن يكون CompareKey موجودًا ومربوطًا بالمواصفات الداخلية والخارجية والأمان قبل الاعتماد.`);
-    const latest = getCoverageState(stock, ads);
+    const latest = getCoverageState(compareKeyReadyStock, ads);
     const eligible = new Set(latest.eligibleRows.map((r) => r.key));
-    if (latest.cycle !== coverageState.cycle || draftRows.some((r) => !eligible.has(r.key))) {
-      setShowPlan(false); setDraftKeys(new Set());
+    if (!planAutomatic && (latest.cycle !== coverageState.cycle || draftRows.some((r) => !eligible.has(r.key)))) {
+      setShowPlan(false); setDraftKeys(new Set()); setPlanRequestedCount(0);
       return setError("تغيرت تغطية الاستوك أثناء تجهيز الجدول. جهز الجدول من جديد.");
     }
     setSaving(true);
     try {
       await createPublishingAssignments(previewRows);
-      setShowPlan(false); setDraftKeys(new Set()); clearSelection();
+      setShowPlan(false); setDraftKeys(new Set()); setPlanRequestedCount(0); setPlanAutomatic(false); clearSelection();
       navigate(`/schedule?week=${getWeekStartKey(planStart)}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "تعذر إنشاء جدول النشر");
@@ -180,30 +194,31 @@ export function InventoryPage() {
     {error ? <div className="alert error"><WarningCircle size={19} />{error}</div> : null}
     {unassignedActiveAgents ? <div className="alert warning"><WarningCircle size={19} />يوجد {unassignedActiveAgents} مندوب نشط بدون فرع نشط، ولن يدخل في التوزيع حتى يتم ربطه بفرع نشط.</div> : null}
     {stockExcludedAgencyVehicles > 0 ? <div className="alert info"><CheckCircle size={19} />تم استبعاد {stockExcludedAgencyVehicles} سيارة لأن المكان = الوكالة.</div> : null}
-    {coverageState.startedNewCycle && stock.length ? <div className="alert success"><CheckCircle size={19} />تمت تغطية الاستوك بالكامل سابقًا، وبدأت دورة جديدة رقم {coverageState.cycle}.</div> : null}
+    {compareKeyExcludedCount > 0 ? <div className="alert info"><CheckCircle size={19} />تم استبعاد {compareKeyExcludedCount} سيارة من التكليف لأنها بدون CompareKey كامل للمواصفات الداخلية والخارجية والأمان.</div> : null}
+    {coverageState.startedNewCycle && compareKeyReadyStock.length ? <div className="alert success"><CheckCircle size={19} />تمت تغطية السيارات المؤهلة بالكامل سابقًا، وبدأت دورة جديدة رقم {coverageState.cycle}.</div> : null}
 
     <section className="plan-window-hero">
       <div className="plan-window-main"><div className="plan-window-icon"><CalendarBlank size={30} weight="duotone" /></div><div><span>{suggested.isFridayPreparation ? "الجدول الأسبوعي الجديد" : "جدول النشر القادم"}</span><h2>{formatPlanRange(suggested.planStart, suggested.planEnd)}</h2><p>حساب حراج واحد: <b>{publishingSettings.accountName || "غير محدد"}</b>. كل يوم يُملأ حتى الحد المتاح، ثم يتقسم على الفروع حسب عدد المناديب النشطين داخل كل فرع.</p></div></div>
-      <div className="plan-window-metrics"><div><span>أيام النشر</span><b>{suggestedDays}</b></div><div><span>حد الحساب اليومي</span><b>{dailyLimit}</b></div><div><span>سعة الفترة</span><b>{periodCapacity}</b></div><div><span>سيارات جديدة للجدول</span><b>{automaticTarget}</b></div></div>
+      <div className="plan-window-metrics"><div><span>أيام النشر</span><b>{suggestedDays}</b></div><div><span>حد الحساب اليومي</span><b>{dailyLimit}</b></div><div><span>سعة الفترة</span><b>{periodCapacity}</b></div><div><span>إعلانات الجدول التلقائي</span><b>{automaticTarget}</b></div></div>
       <button className="primary-button plan-window-action" onClick={openAutomatic} disabled={!automaticTarget || stockLoading}><CalendarBlank size={20} />تجهيز جدول تلقائي <b>{automaticTarget || ""}</b></button>
     </section>
 
-    {remainingCapacity > coverageState.eligibleRows.length && coverageState.eligibleRows.length > 0 ? <div className="alert info"><CheckCircle size={19} />السعة المتبقية {remainingCapacity} إعلان، لكن يوجد {coverageState.eligibleRows.length} سيارة مختلفة فقط لم تُغطَّ بعد. لن يكرر النظام سيارة لملء السعة.</div> : null}
+    {remainingCapacity > 0 && compareKeyReadyStock.length > 0 ? <div className="alert info"><CheckCircle size={19} />سيتم ملء الحد اليومي حتى نهاية الفترة. لا تتكرر السيارة داخل نفس دورة التغطية؛ بعد تغطية كل سيارات CompareKey المؤهلة تبدأ دورة جديدة تلقائيًا.</div> : null}
 
     <section className="stats-grid inventory-stats">
       <StatCard label="دورة التغطية" value={coverageState.cycle} hint="لا تكرار قبل تغطية الجميع" tone="info" />
-      <StatCard label="متاح بدون تكرار" value={coverageState.eligibleRows.length} hint="سيارات/فئات جديدة" tone="warn" />
-      <StatCard label="تمت تغطيته" value={coverageState.coveredCount} hint={`من ${stock.length} سيارة/فئة`} tone="good" />
+      <StatCard label="متاح في الدورة الحالية" value={coverageState.eligibleRows.length} hint={`من ${compareKeyReadyStock.length} سيارة CompareKey مؤهلة`} tone="warn" />
+      <StatCard label="تمت تغطيته" value={coverageState.coveredCount} hint={`من ${compareKeyReadyStock.length} سيارة مؤهلة`} tone="good" />
       <StatCard label="الفروع المشاركة" value={activeBranches.length} hint={`${activeAgents.length} مندوب نشط`} />
       <StatCard label="سيارات الموقع للمواصفات" value={websiteCars.length} hint={websiteCarsError ? "الربط يحتاج مراجعة" : "CompareKey هو مصدر الداخلي/الخارجي/الأمان"} tone={websiteCarsError ? "danger" : "good"} />
     </section>
 
-    <div className="inventory-toolbar"><div className="filters-bar inventory-filters"><label className="search-box"><MagnifyingGlass size={19} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="بحث باسم السيارة أو البيان أو الموديل" /></label><select value={coverage} onChange={(e) => setCoverage(e.target.value as typeof coverage)}><option value="available">متاح للتكليف</option><option value="covered">تمت تغطيته</option><option value="all">كل الاستوك</option></select></div><div className="selection-actions"><button className="secondary-button" onClick={selectAutomaticRows} disabled={!automaticTarget}><CheckSquare size={18} />تحديد {automaticTarget || ""} سيارة</button>{selectedRows.length ? <button className="ghost-button" onClick={clearSelection}>إلغاء التحديد</button> : null}<button className="secondary-button emphasized" onClick={openManual} disabled={!selectedRows.length}><CalendarBlank size={19} />تجهيز المحدد <b>{selectedRows.length || ""}</b></button></div></div>
+    <div className="inventory-toolbar"><div className="filters-bar inventory-filters"><label className="search-box"><MagnifyingGlass size={19} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="بحث باسم السيارة أو البيان أو الموديل" /></label><select value={coverage} onChange={(e) => setCoverage(e.target.value as typeof coverage)}><option value="available">متاح للتكليف</option><option value="covered">تمت تغطيته</option><option value="all">كل الاستوك</option></select></div><div className="selection-actions"><button className="secondary-button" onClick={selectAutomaticRows} disabled={!automaticUniqueSelectionCount}><CheckSquare size={18} />تحديد {automaticUniqueSelectionCount || ""} سيارة</button>{selectedRows.length ? <button className="ghost-button" onClick={clearSelection}>إلغاء التحديد</button> : null}<button className="secondary-button emphasized" onClick={openManual} disabled={!selectedRows.length}><CalendarBlank size={19} />تجهيز المحدد <b>{selectedRows.length || ""}</b></button></div></div>
 
     <section className="panel table-panel">{!stock.length && !stockLoading ? <EmptyState title="لا توجد بيانات" text={stockError ? "تعذر الاتصال بمصدر الاستوك." : "لا توجد سيارات متاح للبيع خارج الوكالة حاليًا."} /> : !rows.length ? <EmptyState title="لا توجد نتائج" text="غيّر البحث أو الفلتر." /> : <div className="table-scroll"><table className="inventory-table"><thead><tr><th></th><th>السيارة</th><th>البيان</th><th>الموديل</th><th>الاستوك</th><th>التغطية</th><th>آخر تكليف</th></tr></thead><tbody>{rows.map((row) => { const available = eligibleSet.has(row.key); const selected = selectedKeys.has(row.key); const last = latestByVehicle.get(row.key); return <tr key={row.key} className={`${selected ? "selected-row" : ""} ${available ? "" : "covered-row"}`} onClick={() => available && toggle(row)}><td><input type="checkbox" checked={selected} disabled={!available} onChange={() => toggle(row)} onClick={(e) => e.stopPropagation()} /></td><td><strong>{row.carName}</strong></td><td>{row.statement}</td><td>{row.modelYear}</td><td><span className="stock-badge"><SquaresFour size={16} />{row.quantity}</span></td><td>{available ? <span className="coverage-state uncovered">متاح</span> : <span className="coverage-state covered"><CheckCircle size={16} />تمت التغطية</span>}</td><td>{last?.scheduledDate || "—"}</td></tr>; })}</tbody></table></div>}</section>
 
     {showPlan ? <div className="modal-backdrop" onMouseDown={(e) => { if (e.currentTarget === e.target && !saving) setShowPlan(false); }}><div className="modal-card weekly-plan-modal">
-      <div className="modal-head"><div><h2>مراجعة جدول النشر قبل الاعتماد</h2><p>الحد اليومي يُقسم على الفروع أولًا، ثم تتوزع حصة كل فرع على مناديبه. لا يوجد تكرار للسيارات.</p></div><button className="icon-button" onClick={() => setShowPlan(false)} disabled={saving}>×</button></div>
+      <div className="modal-head"><div><h2>مراجعة جدول النشر قبل الاعتماد</h2><p>الحد اليومي يُقسم على الفروع أولًا، ثم تتوزع حصة كل فرع على مناديبه. لا تتكرر السيارة داخل نفس دورة التغطية.</p></div><button className="icon-button" onClick={() => setShowPlan(false)} disabled={saving}>×</button></div>
       <div className="period-card locked-period"><CalendarBlank size={23} /><div><span>فترة النشر</span><strong>{formatPlanRange(planStart, planEnd)}</strong><small>محددة تلقائيًا</small></div><span className="locked-period-badge">{days.length} أيام</span></div>
       <div className="plan-summary-grid"><div><span>حساب حراج</span><strong className="small-summary-value">{publishingSettings.accountName}</strong></div><div><span>الإعلانات</span><strong>{previewRows.length}</strong></div><div><span>الحد اليومي</span><strong>{dailyLimit}</strong></div><div><span>الفروع / المناديب</span><strong>{activeBranches.length} / {activeAgents.length}</strong></div></div>
       {basePreview.error ? <div className="alert error"><WarningCircle size={18} />{basePreview.error}</div> : <>
@@ -221,7 +236,7 @@ export function InventoryPage() {
             </div>) : <div className="day-empty">لا توجد إعلانات في هذا اليوم</div>}</div>
           </section>)}</div>
         </div>
-        <div className="preview-note"><CheckCircle size={18} />كل سيارة تظهر مرة واحدة فقط. المواصفات الداخلية والخارجية والأمان تُقرأ من صف CompareKey نفسه.</div>
+        <div className="preview-note"><CheckCircle size={18} />لا تتكرر السيارة داخل نفس دورة التغطية، وبعد تغطية الجميع تبدأ دورة جديدة. المواصفات الداخلية والخارجية والأمان تُقرأ من صف CompareKey نفسه.</div>
       </>}
       <div className="modal-actions"><button className="ghost-button" onClick={() => setShowPlan(false)} disabled={saving}>إلغاء</button><button className="primary-button" onClick={() => void createPlan()} disabled={saving || Boolean(basePreview.error) || Boolean(notReady)}><Plus size={18} />{saving ? "جارٍ إنشاء الجدول..." : `اعتماد ${previewRows.length} إعلان`}</button></div>
     </div></div> : null}

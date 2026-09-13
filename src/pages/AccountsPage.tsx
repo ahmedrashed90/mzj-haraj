@@ -3,6 +3,7 @@ import { Buildings, FloppyDisk, Plus, Storefront, Trash, UsersThree, WarningCirc
 import { useAppData } from "../AppDataContext";
 import { addAccount, addAgent, removeAccount, removeAgent, savePublishingSettings, updateAccount, updateAgent } from "../data";
 import { dateKey } from "../schedule";
+import { defaultBranchAdvertiserName } from "../branch-advertiser";
 import { ConfirmButton, EmptyState, PageTitle, StatCard } from "../components/Ui";
 
 export function AccountsPage() {
@@ -11,6 +12,9 @@ export function AccountsPage() {
   const [dailyLimit, setDailyLimit] = useState("");
   const [branchName, setBranchName] = useState("");
   const [branchNote, setBranchNote] = useState("");
+  const [branchAdvertiserName, setBranchAdvertiserName] = useState("");
+  const [branchAdvertiserDrafts, setBranchAdvertiserDrafts] = useState<Record<string, string>>({});
+  const [savingBranchId, setSavingBranchId] = useState("");
   const [agentName, setAgentName] = useState("");
   const [agentPhone, setAgentPhone] = useState("");
   const [agentBranchId, setAgentBranchId] = useState("");
@@ -22,6 +26,10 @@ export function AccountsPage() {
     setHarajName(publishingSettings.accountName || "");
     setDailyLimit(String(publishingSettings.dailyLimit || ""));
   }, [publishingSettings.accountName, publishingSettings.dailyLimit]);
+
+  useEffect(() => {
+    setBranchAdvertiserDrafts(Object.fromEntries(accounts.map((branch) => [branch.id, branch.advertiserName || defaultBranchAdvertiserName(branch.name)])));
+  }, [accounts]);
 
   const today = dateKey(new Date());
   const todayAds = useMemo(() => ads.filter((ad) => ad.scheduledDate === today && ad.status !== "closed"), [ads, today]);
@@ -56,10 +64,26 @@ export function AccountsPage() {
     if (!branchName.trim()) return setError("اكتب اسم الفرع.");
     setSaving(true);
     try {
-      await addAccount({ name: branchName.trim(), adLimit: 0, note: branchNote.trim(), active: true });
-      setBranchName(""); setBranchNote("");
+      await addAccount({ name: branchName.trim(), advertiserName: branchAdvertiserName.trim() || defaultBranchAdvertiserName(branchName.trim()), adLimit: 0, note: branchNote.trim(), active: true });
+      setBranchName(""); setBranchNote(""); setBranchAdvertiserName("");
     } catch (e) { setError(e instanceof Error ? e.message : "تعذر إضافة الفرع"); }
     finally { setSaving(false); }
+  }
+
+  async function saveBranchAdvertiser(branchId: string) {
+    const branch = accounts.find((item) => item.id === branchId);
+    if (!branch) return;
+    const value = String(branchAdvertiserDrafts[branchId] || "").trim();
+    if (!value) return setError("اكتب اسم المعرض الذي سيظهر داخل صيغة إعلان الفرع.");
+    setSavingBranchId(branchId); setError(""); setNotice("");
+    try {
+      await updateAccount(branchId, { advertiserName: value });
+      setNotice(`تم حفظ اسم المعرض داخل إعلانات فرع ${branch.name}: ${value}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "تعذر حفظ اسم المعرض للفرع");
+    } finally {
+      setSavingBranchId("");
+    }
   }
 
   async function createAgent(event: FormEvent) {
@@ -89,7 +113,7 @@ export function AccountsPage() {
     </section>
 
     <section className="panel single-account-panel">
-      <div className="panel-head"><div><h2><Storefront size={21} /> حساب حراج المستخدم حاليًا</h2><p>اسم الحساب هنا هو نفسه الذي سيظهر داخل جملة «متوفرة الآن لدى ...» في كل صيغة إعلان.</p></div></div>
+      <div className="panel-head"><div><h2><Storefront size={21} /> حساب حراج المستخدم حاليًا</h2><p>هذا هو حساب حراج الفعلي المستخدم للنشر والحد اليومي. اسم المعرض المكتوب داخل صيغة الإعلان يتحدد لكل فرع من إعدادات الفروع بالأسفل.</p></div></div>
       <form className="publishing-settings-form" onSubmit={saveHarajSettings}>
         <label>اسم حساب / متجر حراج<input value={harajName} onChange={(e) => setHarajName(e.target.value)} placeholder="اكتب الاسم كما يظهر في حراج" /></label>
         <label>الحد اليومي للحساب<input type="number" min="1" value={dailyLimit} onChange={(e) => setDailyLimit(e.target.value)} placeholder="مثال: 25" /></label>
@@ -102,6 +126,7 @@ export function AccountsPage() {
       <form className="panel form-panel" onSubmit={createBranch}>
         <div className="panel-head"><div><h2><Buildings size={20} /> إضافة فرع</h2><p>الفرع يدخل في توزيع الحد اليومي طالما نشط وفيه مناديب نشطون.</p></div></div>
         <label>اسم الفرع<input value={branchName} onChange={(e) => setBranchName(e.target.value)} placeholder="مثال: الملتقى" /></label>
+        <label>اسم المعرض داخل صيغة الإعلان<input value={branchAdvertiserName} onChange={(e) => setBranchAdvertiserName(e.target.value)} placeholder={branchName ? defaultBranchAdvertiserName(branchName) : "مثال: شركة الملتقى للسيارات"} /></label>
         <label>ملاحظة (اختياري)<input value={branchNote} onChange={(e) => setBranchNote(e.target.value)} placeholder="ملاحظة داخلية" /></label>
         <button className="primary-button" disabled={saving}><Plus size={18} />إضافة الفرع</button>
       </form>
@@ -115,7 +140,7 @@ export function AccountsPage() {
     </section>
 
     <section className="panel">
-      <div className="panel-head"><div><h2>الفروع</h2><p>الحصة الفعلية تتحدد يوميًا تلقائيًا من الحد المتاح وعدد المناديب النشطين بكل فرع.</p></div></div>
+      <div className="panel-head"><div><h2>الفروع</h2><p>لكل فرع اسم معرض مستقل يظهر داخل صيغة الإعلان. يمكنك تعديله في أي وقت بدون تغيير اسم الفرع أو حساب حراج الفعلي.</p></div></div>
       {!accounts.length ? <EmptyState title="لا توجد فروع" text="أضف الفروع التي يعمل بها المناديب." /> : <div className="account-admin-grid">{accounts.map((branch) => {
         const reps = agents.filter((agent) => agent.accountId === branch.id);
         const active = reps.filter((agent) => agent.active && branch.active !== false).length;
@@ -123,6 +148,7 @@ export function AccountsPage() {
         return <article className={`account-admin-card ${branch.active ? "" : "disabled"}`} key={branch.id}>
           <div className="account-card-head"><div><strong>{branch.name}</strong><span>{branch.note || "فرع داخلي"}</span></div><label className="switch-label"><input type="checkbox" checked={branch.active} onChange={(e) => void updateAccount(branch.id, { active: e.target.checked })} /><span>{branch.active ? "نشط" : "موقوف"}</span></label></div>
           <div className="inline-editor"><span>إجمالي المناديب: <b>{reps.length}</b></span><span>النشطون: <b>{active}</b></span><span>حصة تقريبية/يوم: <b>≈ {branch.active && active ? approximate : 0}</b></span></div>
+          <div className="branch-advertiser-editor"><label>اسم المعرض داخل صيغة الإعلان<input value={branchAdvertiserDrafts[branch.id] ?? branch.advertiserName ?? defaultBranchAdvertiserName(branch.name)} onChange={(e) => setBranchAdvertiserDrafts((current) => ({ ...current, [branch.id]: e.target.value }))} /></label><button className="secondary-button compact" onClick={() => void saveBranchAdvertiser(branch.id)} disabled={savingBranchId === branch.id}><FloppyDisk size={16} />{savingBranchId === branch.id ? "جارٍ الحفظ" : "حفظ المسمى"}</button></div>
           <div className="account-card-actions"><ConfirmButton confirmText="حذف الفرع؟ لن يتم حذف التكليفات القديمة تلقائيًا." onConfirm={() => removeAccount(branch.id)}><Trash size={17} />حذف</ConfirmButton></div>
         </article>;
       })}</div>}

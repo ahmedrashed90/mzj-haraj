@@ -1,0 +1,19 @@
+MZJ Haraj Manager v1.9.0 CLEAN - Verification
+
+1) TypeScript/TSX syntax transpile: PASS (24 production files in src + api).
+2) schedule.ts + types.ts + branch-advertiser.ts standalone compile: PASS.
+3) Runtime scheduling test:
+   - daily limit: 10
+   - period: 5 days
+   - 21 eligible CompareKey vehicles
+   - 14 active reps across 3 branches (6 / 4 / 4)
+   - result: 50 assignments exactly, 10 on each day.
+   - coverage cycles: 21 in cycle 1, 21 in cycle 2, 8 in cycle 3.
+   - duplicate vehicle inside same cycle: 0.
+4) Branch split test for 10 daily ads with reps 6 / 4 / 4:
+   - daily branch split: 4 / 3 / 3 with rotating tie priority.
+5) Branch advertiser-name snapshot test:
+   - الصالة -> معرض محمد ذعار العجمي للسيارات
+   - القادسية -> معرض محمد العجمى للسيارات
+   - الملتقى -> شركة الملتقى للسيارات
+6) npm dependency installation timed out in this execution environment, so a full dependency-based Vite build was not reproduced here.

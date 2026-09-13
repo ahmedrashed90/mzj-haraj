@@ -1,6 +1,7 @@
 import logo from "../assets/mzj-logo.png";
 import { formatDateArabic, formatPlanRange, getPlanDays, isPublished } from "../schedule";
 import type { Agent, HarajAccount, HarajAd, PublishingSettings } from "../types";
+import { getBranchAdvertiserName } from "../branch-advertiser";
 
 const POLICIES = [
   "كتابة السعر بشكل واضح ومباشر، والتأكد من اكتمال بيانات ووصف السيارة.",
@@ -30,7 +31,7 @@ function buildPages(days: PlanDay[], ads: HarajAd[]): PdfPage[] {
   return ads.length ? [...out, { kind: "guidance" }] : out;
 }
 function Header({ branch, publishing, planStart, planEnd }: { branch: HarajAccount; publishing: PublishingSettings; planStart: string; planEnd: string }) {
-  return <header className="pdf-header"><img src={logo} alt="MZJ" /><div><span>إدارة إعلانات حراج · حساب: {publishing.accountName || "—"}</span><h1>جدول النشر - {branch.name}</h1><p>{formatPlanRange(planStart, planEnd)}</p></div></header>;
+  return <header className="pdf-header"><img src={logo} alt="MZJ" /><div><span>إدارة إعلانات حراج · حساب: {publishing.accountName || "—"}</span><h1>جدول النشر - {branch.name}</h1><p>اسم المعرض داخل الإعلان: {getBranchAdvertiserName(branch, publishing.accountName)}</p><p>{formatPlanRange(planStart, planEnd)}</p></div></header>;
 }
 function Footer({ pageNumber, totalPages }: { pageNumber: number; totalPages: number }) { return <footer className="pdf-footer"><span>مجموعة محمد بن ذعار العجمي - MZJ</span><span>صفحة {pageNumber} من {totalPages}</span><span>المطلوب بعد النشر: رابط الإعلان.</span></footer>; }
 

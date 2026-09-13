@@ -5,6 +5,8 @@ export type HarajAccount = {
   /** Legacy field only; publishing capacity comes from settings/haraj_publishing. */
   adLimit: number;
   note?: string;
+  /** Name written inside the generated Haraj ad for this branch. */
+  advertiserName?: string;
   active: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -44,7 +46,10 @@ export type HarajAd = {
   accountId?: string;
   branchId?: string;
   agentId: string;
+  /** Actual Haraj account used for publishing/capacity. */
   harajAccountName?: string;
+  /** Branch-specific showroom/company name written inside the ad copy. */
+  advertiserName?: string;
   status: AdStatus;
   url?: string;
   notes?: string;
