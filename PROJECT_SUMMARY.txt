@@ -1,4 +1,4 @@
-MZJ Haraj Manager v1.16.0 CLEAN
+MZJ Haraj Manager v1.17.0 CLEAN
 
 CORE PUBLISHING MODEL
 - One actual Haraj account and one company daily limit.
@@ -30,16 +30,17 @@ VEHICLE COVERAGE
 
 WORD EXPORT
 - PDF export is removed.
-- Each branch exports a real DOCX file generated in-browser.
+- One weekly DOCX is generated in-browser for all branches.
 - DOCX does not include publishing-period or publishing-time columns.
 - DOCX includes day tables, assigned rep/type/vehicle/link status, and publishing policies.
+- Under every day, each scheduled ad includes its full Haraj title and full publishing copy so the weekly Word file is directly usable for copy/paste.
 
 FIRESTORE
 - settings/haraj_publishing
 - haraj_accounts
 - agents
 - haraj_ads
-- legacy publishing_periods collection is no longer read or used by v1.16.0.
+- legacy publishing_periods collection is no longer read or used by v1.17.0.
 
 WORDPRESS BRIDGE
 - MZJ Haraj Ad Data Bridge v1.1.0

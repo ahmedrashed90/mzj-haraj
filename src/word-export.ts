@@ -43,6 +43,45 @@ function paragraph(text: string, options: { bold?: boolean; size?: number; cente
   return `<w:p><w:pPr><w:bidi/><w:jc w:val="${align}"/><w:spacing w:before="${options.before || 0}" w:after="${options.after ?? 80}"/></w:pPr>${run(text, options)}</w:p>`;
 }
 
+
+function formatPublishingPrice(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "";
+  return new Intl.NumberFormat("ar-SA-u-nu-latn", { maximumFractionDigits: 0 }).format(value);
+}
+
+function normalizeAdTextForWord(value: unknown, price: string) {
+  let text = String(value ?? "")
+    .trim()
+    .replace(/(^|\n)المندوب:\s*/g, "$1")
+    .replace(/(^|\n)متوفرة الآن لدى[^\n]*/g, "$1متوفرة الآن")
+    .replace(/(^|\n)السعر:\s*[^\n]*/g, "$1")
+    .replace(/(^|\n)السعر شامل الضريبة:\s*[^\n]*/g, "$1")
+    .replace(/(^|\n)احصل على الخصم والهدايا عند التواصل\s*/g, "$1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (price) text = `${text}\n\nالسعر شامل الضريبة: ${price} ريال\nاحصل على الخصم والهدايا عند التواصل`;
+  return text.trim();
+}
+
+function getWordAdText(ad: HarajAd) {
+  return normalizeAdTextForWord(ad.adText, formatPublishingPrice(Number(ad.websitePrice || 0)));
+}
+
+function multilineParagraph(text: string, options: { size?: number; after?: number; before?: number } = {}) {
+  const lines = String(text || "—").replace(/\r\n/g, "\n").split("\n");
+  const rPr = [
+    '<w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>',
+    '<w:rtl/>',
+    `<w:sz w:val="${options.size || 20}"/><w:szCs w:val="${options.size || 20}"/>`,
+  ].join("");
+  const body = lines.map((line, index) => {
+    const br = index < lines.length - 1 ? '<w:br/>' : "";
+    return `<w:r><w:rPr>${rPr}</w:rPr><w:t xml:space="preserve">${xmlEscape(line)}</w:t>${br}</w:r>`;
+  }).join("");
+  return `<w:p><w:pPr><w:bidi/><w:jc w:val="right"/><w:spacing w:before="${options.before || 0}" w:after="${options.after ?? 100}"/><w:pBdr><w:top w:val="single" w:sz="4" w:space="4" w:color="E8D9D3"/><w:left w:val="single" w:sz="4" w:space="4" w:color="E8D9D3"/><w:bottom w:val="single" w:sz="4" w:space="4" w:color="E8D9D3"/><w:right w:val="single" w:sz="4" w:space="4" w:color="E8D9D3"/></w:pBdr><w:ind w:left="120" w:right="120"/></w:pPr>${body}</w:p>`;
+}
+
 function pageBreak() {
   return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
 }
@@ -119,6 +158,21 @@ function buildDocumentXml(args: {
         isPublished(ad) ? (ad.url || "تم استلام الرابط") : "يرسل بعد النشر",
       ]),
     ));
+
+    parts.push(paragraph("صيغ إعلانات اليوم", { bold: true, size: 25, before: 180, after: 100 }));
+    rows.forEach((ad, index) => {
+      const branchName = branchById.get(adBranchId(ad))?.name || "—";
+      const agentName = agentById.get(ad.agentId)?.name || ad.agentNameSnapshot || "—";
+      const agentType = ad.agentTypeSnapshot === "installment" ? "تقسيط" : "كاش";
+      parts.push(paragraph(`إعلان ${index + 1} · ${ad.carName || "سيارة"} ${ad.modelYear || ""}`.trim(), { bold: true, size: 23, before: 120, after: 50 }));
+      parts.push(paragraph(`الفرع: ${branchName} | المندوب المكلف: ${agentName} | النوع: ${agentType}`, { size: 19, after: 55 }));
+      parts.push(paragraph("عنوان إعلان حراج", { bold: true, size: 20, after: 35 }));
+      parts.push(paragraph(ad.adTitle || "عنوان الإعلان غير جاهز", { bold: true, size: 21, after: 70 }));
+      parts.push(paragraph("صيغة الإعلان", { bold: true, size: 20, after: 35 }));
+      parts.push(multilineParagraph(getWordAdText(ad) || "صيغة الإعلان غير جاهزة.", { size: 20, after: 90 }));
+      if (ad.url) parts.push(paragraph(`رابط الإعلان: ${ad.url}`, { size: 18, after: 100 }));
+    });
+
     if (dayIndex === daysWithAds.length - 1) parts.push(paragraph("", { after: 0 }));
   });
 

@@ -1,0 +1,13 @@
+MZJ Haraj Manager v1.17.0 CLEAN - Verification
+
+CHANGE
+- Weekly Word export remains one DOCX for all branches and all scheduled days.
+- Every day now contains the compact daily schedule table AND a dedicated "صيغ إعلانات اليوم" section.
+- Every scheduled ad in that day includes:
+  * assigned branch / rep / type
+  * full Haraj ad title
+  * full publishing ad copy with line breaks preserved
+  * current website price normalized to the same final price block used in the UI
+  * published Haraj URL when available
+- No publishing-period logic was reintroduced.
+- Daily quantity / rep rotation / coverage logic is unchanged from v1.16.0.
