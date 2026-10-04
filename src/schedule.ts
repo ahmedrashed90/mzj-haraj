@@ -204,12 +204,14 @@ function buildVehicleTargets(vehicles: StockGroup[], existingAds: HarajAd[], sta
 }
 
 /**
- * Publishing model v1.13:
+ * Publishing model v1.14:
  * - One Haraj account owns the company daily publishing limit.
  * - That daily limit is the only source of ad quantity: N ads/day means N ads on every publishing day.
  * - Publishing periods define timing and rep order only; they never add an independent ad quota.
- * - Daily ads are assigned to active periods in chronological order and loop through the periods when needed.
- * - Every period has its own ordered rep list. Assignment follows that order and loops when needed.
+ * - The period cursor is continuous across days, so an extra slot is not always given to the first period.
+ * - Every period has its own ordered rep list, and its rep cursor is continuous across days/weeks.
+ *   Example: 14 reps + 4 ads/day => day 1 uses reps 1-4, day 2 uses 5-8, then 9-12, then 13-14-1-2.
+ * - Existing assignments seed the cursors, so generating the remaining capacity continues from the last used period/rep instead of restarting.
  * - The rep's branch is inherited automatically from the rep record; branches do not receive an automatic quota.
  * - A vehicle is never repeated inside the same coverage cycle. After all eligible cars are used, a new cycle starts so the daily limit can keep being filled.
  */
@@ -253,21 +255,27 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
 
   const slots: PublishingSlot[] = [];
   let stillNeeded = requested;
+
+  // Keep both the period cursor and every period's rep cursor continuous.
+  // This prevents every new day from restarting at period #1 / rep #1.
+  const assignmentHistory = existingAds.filter((ad) => Boolean(ad.publishingPeriodId));
+  let periodCursor = assignmentHistory.length;
+  const periodSequence = new Map<string, number>();
+  orderedPeriods.forEach((period) => {
+    periodSequence.set(period.id, assignmentHistory.filter((ad) => ad.publishingPeriodId === period.id).length);
+  });
+
   for (const day of days) {
     if (stillNeeded <= 0) break;
     const dayRemaining = remainingByDay.get(day.key) || 0;
     if (dayRemaining <= 0) continue;
     const dayToAdd = Math.min(stillNeeded, dayRemaining);
-    const existingDay = existingAds.filter((ad) => ad.status !== "closed" && ad.scheduledDate === day.key);
-    const periodSequence = new Map<string, number>();
-    orderedPeriods.forEach((period) => {
-      periodSequence.set(period.id, existingDay.filter((ad) => ad.publishingPeriodId === period.id).length);
-    });
 
     for (let offset = 0; offset < dayToAdd; offset += 1) {
-      // Periods control publishing time only. The number of ads comes exclusively
-      // from the account daily limit, so we simply walk the periods in order.
-      const period = orderedPeriods[(existingDay.length + offset) % orderedPeriods.length];
+      // Quantity comes only from dailyLimit. Periods only provide the publishing time.
+      // The cursor keeps moving across days so the next ad continues from where the
+      // previous ad stopped instead of starting from the first period every morning.
+      const period = orderedPeriods[periodCursor % orderedPeriods.length];
       const agentsInPeriod = periodAgents.get(period.id) || [];
       if (!agentsInPeriod.length) throw new Error(`فترة «${period.name}» لا يوجد بها مندوب متاح.`);
       const sequence = periodSequence.get(period.id) || 0;
@@ -278,6 +286,7 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
         periodAgentSequence: sequence + 1,
       });
       periodSequence.set(period.id, sequence + 1);
+      periodCursor += 1;
       stillNeeded -= 1;
     }
   }

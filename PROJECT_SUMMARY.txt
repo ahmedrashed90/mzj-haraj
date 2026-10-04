@@ -1,11 +1,11 @@
-MZJ Haraj Manager v1.13.0 CLEAN
+MZJ Haraj Manager v1.14.0 CLEAN
 
 CORE RULES
 - One actual Haraj account and one company daily limit.
-- Daily publishing is configured through publishing periods.
-- Every period has: name, start/end time, ads/day, ordered agentIds, active state.
-- Active period ads/day total must equal the Haraj daily limit.
-- Assignment follows each period rep order exactly; branch still comes from the assigned rep.
+- The account daily limit is the only source of ad quantity.
+- Every publishing period has: name, start/end time, ordered agentIds, active state.
+- Periods do not have an independent quota and do not change the daily ad count.
+- Assignment follows each period rep order continuously across days; branch still comes from the assigned rep.
 - Reps can be cash or installment.
 - No vehicle repeats inside the same coverage cycle; after all eligible cars are covered, a new cycle starts.
 - Cars without complete CompareKey are excluded from scheduling.
@@ -53,3 +53,11 @@ V1.13.0 DAILY LIMIT / PERIODS
 - Daily limit is fixed per publishing day and is no longer required to equal the sum of publishing-period counts.
 - Publishing periods are time/rep-order slots only.
 - Automatic schedule quantity = dailyLimit * days in the active plan window minus already scheduled open ads in that window.
+
+
+V1.14.0 CONTINUOUS REP ROTATION
+- Daily limit remains the only source of ad quantity.
+- Publishing periods provide timing only; their cursor continues across days.
+- Each period's ordered rep cursor continues across days/weeks instead of restarting at rep #1 every day.
+- Existing assignments seed the next cursor position.
+- Example: 14 reps + 4 ads/day => 1-4, 5-8, 9-12, 13-14-1-2.
