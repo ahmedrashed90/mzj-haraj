@@ -1,7 +1,7 @@
 import { ArrowClockwise, ArrowSquareOut, CalendarBlank, WarningCircle } from "@phosphor-icons/react";
 import { useMemo } from "react";
 import { useAppData } from "../AppDataContext";
-import { adBranchId, dateKey, formatDateArabic, formatPlanRange, getCoverageState, getPlanWindowFromAds, getPublishingPlanCapacity, getSuggestedPlanWindow, getWeekEndKey, getWeekStartKey, isOverdue, isPublished } from "../schedule";
+import { adBranchId, dateKey, formatDateArabic, formatPlanRange, getCoverageState, getPlanWindowFromAds, getAutomaticPlanWindow, getPublishingPlanCapacity, getWeekEndKey, getWeekStartKey, isOverdue, isPublished } from "../schedule";
 import { AD_STATUS_LABELS } from "../types";
 import { EmptyState, PageTitle, Progress, StatCard } from "../components/Ui";
 
@@ -9,7 +9,7 @@ export function DashboardPage() {
   const { accounts, agents, ads, publishingSettings, stock, stockTotalVehicles, stockError, stockLoading, stockFetchedAt, refreshStock, websiteCars, websiteCarsError, refreshWebsiteCars, dataError } = useAppData();
   const currentWeek = getWeekStartKey(); const today = dateKey(new Date());
   const weekAds = useMemo(() => ads.filter((ad) => ad.weekStart === currentWeek && ad.status !== "closed"), [ads, currentWeek]);
-  const suggested = getSuggestedPlanWindow();
+  const suggested = getAutomaticPlanWindow();
   const fallback = suggested.weekStart === currentWeek ? { planStart: suggested.planStart, planEnd: suggested.planEnd } : { planStart: currentWeek, planEnd: getWeekEndKey(currentWeek) };
   const plan = weekAds.length ? getPlanWindowFromAds(weekAds, currentWeek) : fallback;
   const capacity = getPublishingPlanCapacity(publishingSettings, plan.planStart, plan.planEnd);

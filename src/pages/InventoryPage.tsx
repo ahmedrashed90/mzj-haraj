@@ -2,11 +2,12 @@ import { useMemo, useState } from "react";
 import { ArrowClockwise, CalendarBlank, CheckCircle, CheckSquare, MagnifyingGlass, Plus, SquaresFour, WarningCircle } from "@phosphor-icons/react";
 import { useNavigate } from "react-router-dom";
 import { useAppData } from "../AppDataContext";
-import { enrichAssignmentsWithAdCopy, getCompareKeyState, matchWebsiteCar } from "../ad-copy";
+import { areAdContactsReady, enrichAssignmentsWithAdCopy, getCompareKeyState, matchWebsiteCar } from "../ad-copy";
 import { createPublishingAssignments } from "../data";
 import {
   buildPublishingAssignments,
   formatPlanRange,
+  getAutomaticPlanWindow,
   getCoverageState,
   getPlanDays,
   getPublishingPlanCapacity,
@@ -41,7 +42,7 @@ export function InventoryPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const suggested = getSuggestedPlanWindow();
+  const suggested = getAutomaticPlanWindow();
   const suggestedDays = getPlanDays(suggested.planStart, suggested.planEnd).length;
   const websiteMatchByStockKey = useMemo(() => {
     const map = new Map<string, ReturnType<typeof matchWebsiteCar>>();
@@ -114,7 +115,7 @@ export function InventoryPage() {
   function openAutomatic() {
     const candidates = sortRows(compareKeyReadyStock);
     const issue = validate(candidates); if (issue) return setError(issue);
-    const window = getSuggestedPlanWindow();
+    const window = getAutomaticPlanWindow();
     setPlanStart(window.planStart); setPlanEnd(window.planEnd);
     setDraftKeys(new Set(candidates.map((r) => r.key)));
     setPlanAutomatic(true);
@@ -172,15 +173,15 @@ export function InventoryPage() {
   const partial = previewRows.filter((ad) => ad.specsStatus === "partial").length;
   const missing = previewRows.filter((ad) => ad.specsStatus === "missing").length;
   const missingPrice = previewRows.filter((ad) => !(Number(ad.websitePrice || 0) > 0)).length;
-  const missingContact = previewRows.filter((ad) => !String(ad.agentNameSnapshot || "").trim() || !String(ad.agentPhoneSnapshot || "").trim()).length;
-  const notReadyRows = previewRows.filter((ad) => ad.specsStatus !== "matched" || !(Number(ad.websitePrice || 0) > 0) || !String(ad.agentNameSnapshot || "").trim() || !String(ad.agentPhoneSnapshot || "").trim());
+  const missingContact = previewRows.filter((ad) => !areAdContactsReady(ad)).length;
+  const notReadyRows = previewRows.filter((ad) => ad.specsStatus !== "matched" || !(Number(ad.websitePrice || 0) > 0) || !areAdContactsReady(ad));
   const notReady = notReadyRows.length;
   const specsProblems = previewRows.filter((ad) => ad.specsStatus !== "matched");
 
   async function createPlan() {
     if (basePreview.error) return setError(basePreview.error);
     if (!previewRows.length) return setError("لا توجد تكليفات جاهزة للحفظ.");
-    if (notReady) return setError(`يوجد ${notReady} إعلان غير جاهز. يلزم CompareKey كامل، وسعر صحيح من الموقع، واسم ورقم جوال المندوب قبل الاعتماد.`);
+    if (notReady) return setError(`يوجد ${notReady} إعلان غير جاهز. يلزم CompareKey كامل، وسعر صحيح من الموقع، وبيانات جميع المناديب النشطين قبل الاعتماد.`);
     const latest = getCoverageState(compareKeyReadyStock, ads);
     const eligible = new Set(latest.eligibleRows.map((r) => r.key));
     if (!planAutomatic && (latest.cycle !== coverageState.cycle || draftRows.some((r) => !eligible.has(r.key)))) {
@@ -210,7 +211,7 @@ export function InventoryPage() {
     {coverageState.startedNewCycle && compareKeyReadyStock.length ? <div className="alert success"><CheckCircle size={19} />تمت تغطية السيارات المؤهلة بالكامل سابقًا، وبدأت دورة جديدة رقم {coverageState.cycle}.</div> : null}
 
     <section className="plan-window-hero">
-      <div className="plan-window-main"><div className="plan-window-icon"><CalendarBlank size={30} weight="duotone" /></div><div><span>{suggested.isFridayPreparation ? "الجدول الأسبوعي الجديد" : "جدول النشر القادم"}</span><h2>{formatPlanRange(suggested.planStart, suggested.planEnd)}</h2><p>حساب حراج واحد: <b>{publishingSettings.accountName || "غير محدد"}</b>. كل يوم يُملأ حسب فترات النشر المحددة وترتيب المناديب داخل كل فترة.</p></div></div>
+      <div className="plan-window-main"><div className="plan-window-icon"><CalendarBlank size={30} weight="duotone" /></div><div><span>الجدول التلقائي من اليوم حتى الجمعة</span><h2>{formatPlanRange(suggested.planStart, suggested.planEnd)}</h2><p>حساب حراج واحد: <b>{publishingSettings.accountName || "غير محدد"}</b>. يبدأ الجدول التلقائي من يوم الضغط على الزر ويستمر حتى الجمعة، مع الالتزام بفترات النشر وترتيب المناديب داخل كل فترة.</p></div></div>
       <div className="plan-window-metrics"><div><span>أيام النشر</span><b>{suggestedDays}</b></div><div><span>حد الحساب اليومي</span><b>{dailyLimit}</b></div><div><span>سعة الفترة</span><b>{periodCapacity}</b></div><div><span>إعلانات الجدول التلقائي</span><b>{automaticTarget}</b></div></div>
       <button className="primary-button plan-window-action" onClick={openAutomatic} disabled={!automaticTarget || stockLoading}><CalendarBlank size={20} />تجهيز جدول تلقائي <b>{automaticTarget || ""}</b></button>
     </section>
@@ -234,8 +235,8 @@ export function InventoryPage() {
       <div className="period-card locked-period"><CalendarBlank size={23} /><div><span>فترة النشر</span><strong>{formatPlanRange(planStart, planEnd)}</strong><small>محددة تلقائيًا</small></div><span className="locked-period-badge">{days.length} أيام</span></div>
       <div className="plan-summary-grid"><div><span>حساب حراج</span><strong className="small-summary-value">{publishingSettings.accountName}</strong></div><div><span>الإعلانات</span><strong>{previewRows.length}</strong></div><div><span>الحد اليومي</span><strong>{dailyLimit}</strong></div><div><span>الفروع / المناديب</span><strong>{activeBranches.length} / {activeAgents.length}</strong></div></div>
       {basePreview.error ? <div className="alert error"><WarningCircle size={18} />{basePreview.error}</div> : <>
-        <div className="specs-preview-summary"><span className="matched">CompareKey كامل <b>{matched}</b></span><span className="partial">CompareKey جزئي <b>{partial}</b></span><span className="missing">CompareKey غير جاهز <b>{missing}</b></span><span className={missingPrice ? "partial" : "matched"}>سعر ناقص <b>{missingPrice}</b></span><span className={missingContact ? "partial" : "matched"}>بيانات مندوب ناقصة <b>{missingContact}</b></span></div>
-        {notReady ? <div className="alert warning"><WarningCircle size={18} />الاعتماد متوقف حتى يكون لكل إعلان CompareKey كامل + سعر من الموقع + اسم ورقم جوال المندوب.</div> : null}
+        <div className="specs-preview-summary"><span className="matched">CompareKey كامل <b>{matched}</b></span><span className="partial">CompareKey جزئي <b>{partial}</b></span><span className="missing">CompareKey غير جاهز <b>{missing}</b></span><span className={missingPrice ? "partial" : "matched"}>سعر ناقص <b>{missingPrice}</b></span><span className={missingContact ? "partial" : "matched"}>بيانات المناديب ناقصة <b>{missingContact}</b></span></div>
+        {notReady ? <div className="alert warning"><WarningCircle size={18} />الاعتماد متوقف حتى يكون لكل إعلان CompareKey كامل + سعر من الموقع + أسماء وأرقام جميع المناديب النشطين.</div> : null}
         {specsProblems.length ? <div className="comparekey-problems"><div className="comparekey-problems-head"><strong>السيارات التي تحتاج مراجعة CompareKey</strong><span>{specsProblems.length}</span></div>{specsProblems.map((ad) => <div className="comparekey-problem-row" key={`${ad.vehicleKey}-${ad.agentId}`}><div><b>{ad.carName}</b><span>{ad.statement} · {ad.modelYear}</span></div><div><code>{ad.websiteCompareKey || "بدون CompareKey"}</code><small>{ad.specsIssue || "غير جاهز"}</small></div></div>)}</div> : null}
 
         <div className="daily-distribution-preview">

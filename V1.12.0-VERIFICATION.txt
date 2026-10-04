@@ -1,0 +1,23 @@
+MZJ Haraj Manager v1.12.0 CLEAN - verification
+
+Implemented from the provided v1.11.0 source:
+1) Automatic schedule window
+   - 2026-10-04 => 2026-10-04 through 2026-10-09 (Friday).
+   - Friday => Friday only.
+
+2) Active-rep contact rotation
+   - Every new ad snapshots all active agents with name + phone.
+   - Rotation test with Ahmed / Badr / Khaled:
+     Ad 1: Ahmed > Badr > Khaled
+     Ad 2: Badr > Khaled > Ahmed
+     Ad 3: Khaled > Ahmed > Badr
+   - Assigned-rep distribution logic remains unchanged.
+
+3) Word export
+   - Schedule page exports DOCX instead of PDF.
+   - DOCX package validated with unzip integrity test.
+   - DOCX opened successfully in LibreOffice Writer and converted to PDF during verification.
+   - No extra npm dependency is required for DOCX generation.
+
+4) TypeScript verification
+   - types.ts, schedule.ts, ad-copy.ts, branch-advertiser.ts and word-export.ts compile successfully with tsc.

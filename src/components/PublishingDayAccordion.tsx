@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { ArrowSquareOut, CaretDown, CaretUp, Check, Copy, Eye, FloppyDisk, LinkSimple, Trash } from "@phosphor-icons/react";
+import { areAdContactsReady } from "../ad-copy";
 import { normalizeHarajUrl, removeAd, updateAd } from "../data";
 import { adBranchId, isOverdue, isPublished } from "../schedule";
 import { AD_STATUS_LABELS, type AdStatus, type Agent, type HarajAccount, type HarajAd, type PublishingSettings } from "../types";
@@ -54,7 +55,7 @@ function CopyButtons({ ad, onPreview }: { ad: HarajAd; onPreview: () => void }) 
   const title = clean(ad.adTitle);
   const text = getPublishingAdText(ad);
   const price = getPublishingPrice(ad);
-  const ready = ad.specsStatus === "matched" && Boolean(title && text && clean(ad.agentNameSnapshot) && clean(ad.agentPhoneSnapshot) && price);
+  const ready = ad.specsStatus === "matched" && Boolean(title && text && price) && areAdContactsReady(ad);
 
   async function copy(key: string, value: string) {
     if (!value) return;
@@ -76,7 +77,7 @@ function CopyButtons({ ad, onPreview }: { ad: HarajAd; onPreview: () => void }) 
 }
 
 function ReadinessBadge({ ad }: { ad: HarajAd }) {
-  const ready = ad.specsStatus === "matched" && Boolean(ad.adTitle && ad.adText && ad.agentNameSnapshot && ad.agentPhoneSnapshot && Number(ad.websitePrice || 0) > 0);
+  const ready = ad.specsStatus === "matched" && Boolean(ad.adTitle && ad.adText && Number(ad.websitePrice || 0) > 0) && areAdContactsReady(ad);
   if (ready) return <span className="row-ready-badge ready">جاهز</span>;
   if (ad.specsStatus === "partial") return <span className="row-ready-badge warn">CompareKey جزئي</span>;
   return <span className="row-ready-badge danger">غير جاهز</span>;

@@ -5,8 +5,8 @@ import { useAppData } from "../AppDataContext";
 import { removeScheduleAds } from "../data";
 import { addDaysKey, adBranchId, dateKey, formatDateArabic, formatPlanRange, getPlanDays, getPlanWindowFromAds, getWeekStartKey, isPublished } from "../schedule";
 import { ConfirmButton, EmptyState, PageTitle } from "../components/Ui";
-import { BranchSchedulePdf } from "../components/BranchSchedulePdf";
 import { PublishingDayAccordion } from "../components/PublishingDayAccordion";
+import { exportBranchScheduleWord } from "../word-export";
 
 export function SchedulePage() {
   const { accounts, agents, ads, publishingSettings } = useAppData();
@@ -51,48 +51,26 @@ export function SchedulePage() {
     }
   }
 
-  function exportBranchPdf(branchId: string) {
+  async function exportBranchWord(branchId: string) {
     const branch = branchById.get(branchId);
-    if (!branch) return;
-    const root = document.querySelector(`.pdf-export-sheet[data-branch-id="${branchId}"]`);
-    if (!root) return window.alert("تعذر تجهيز ملف PDF");
-
+    if (!branch || exporting) return;
+    const rows = weekAds.filter((ad) => ad.status !== "closed" && adBranchId(ad) === branchId);
+    if (!rows.length) return window.alert("لا توجد إعلانات لهذا الفرع لتصديرها.");
     setExporting(branchId);
-    const popup = window.open("", "_blank", "width=920,height=1100");
-    if (!popup) {
+    try {
+      await exportBranchScheduleWord({
+        branch,
+        ads: rows,
+        agents,
+        publishingSettings,
+        planStart,
+        planEnd,
+      });
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "تعذر تجهيز ملف Word");
+    } finally {
       setExporting("");
-      return window.alert("اسمح بفتح النافذة المنبثقة لحفظ PDF.");
     }
-
-    popup.document.open();
-    popup.document.write(`<html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><base href="${window.location.origin}/"><title>جدول النشر - ${branch.name}</title></head><body class="pdf-print-body"></body></html>`);
-    popup.document.close();
-
-    const pendingStyles: Promise<void>[] = [];
-    document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]').forEach((source) => {
-      const link = popup.document.createElement("link");
-      link.rel = "stylesheet";
-      link.href = source.href;
-      pendingStyles.push(new Promise((resolve) => { link.onload = () => resolve(); link.onerror = () => resolve(); window.setTimeout(resolve, 2000); }));
-      popup.document.head.appendChild(link);
-    });
-    document.querySelectorAll<HTMLStyleElement>("style").forEach((source) => popup.document.head.appendChild(source.cloneNode(true)));
-
-    const printStyle = popup.document.createElement("style");
-    printStyle.textContent = `@page{size:A4 portrait;margin:0}html,body{margin:0!important;padding:0!important;width:794px!important;min-width:794px!important;background:#fff!important;overflow:visible!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}*{box-sizing:border-box!important}.pdf-export-sheet{position:static!important;visibility:visible!important;inset:auto!important;width:794px!important;min-width:794px!important;margin:0!important;pointer-events:auto!important;z-index:auto!important}.pdf-page{width:794px!important;min-width:794px!important;max-width:794px!important;height:1123px!important;min-height:1123px!important;max-height:1123px!important;margin:0!important;overflow:hidden!important;break-inside:avoid!important;page-break-inside:avoid!important;page-break-after:always!important;break-after:page!important;transform:none!important;zoom:1!important}.pdf-page:last-child{page-break-after:auto!important;break-after:auto!important}.pdf-page+.pdf-page{page-break-before:always!important;break-before:page!important}img{max-width:100%!important}table{page-break-inside:avoid!important}`;
-    popup.document.head.appendChild(printStyle);
-    popup.document.body.innerHTML = root.outerHTML;
-
-    const finish = async () => {
-      await Promise.all(pendingStyles);
-      if (popup.document.fonts?.ready) await popup.document.fonts.ready;
-      window.setTimeout(() => {
-        setExporting("");
-        popup.focus();
-        popup.print();
-      }, 250);
-    };
-    void finish();
   }
 
   return <>
@@ -113,8 +91,8 @@ export function SchedulePage() {
     </section>
 
     <section className="schedule-control-bar panel">
-      <div className="schedule-account-summary"><span>حساب حراج المستخدم</span><strong>{publishingSettings.accountName || "غير محدد"}</strong><small>ملف PDF مستقل لكل فرع — بدون معاينة داخل الصفحة</small></div>
-      <div className="schedule-pdf-actions">{byBranch.map(({ branch, rows }) => <button key={branch.id} className="secondary-button pdf-branch-button" onClick={() => exportBranchPdf(branch.id)} disabled={exporting === branch.id}><DownloadSimple size={17} />{exporting === branch.id ? "جارٍ التجهيز..." : `PDF ${branch.name}`}<span>{rows.length}</span></button>)}</div>
+      <div className="schedule-account-summary"><span>حساب حراج المستخدم</span><strong>{publishingSettings.accountName || "غير محدد"}</strong><small>ملف Word مستقل لكل فرع بصيغة DOCX</small></div>
+      <div className="schedule-word-actions">{byBranch.map(({ branch, rows }) => <button key={branch.id} className="secondary-button word-branch-button" onClick={() => void exportBranchWord(branch.id)} disabled={exporting === branch.id}><DownloadSimple size={17} />{exporting === branch.id ? "جارٍ التجهيز..." : `Word ${branch.name}`}<span>{rows.length}</span></button>)}</div>
       {weekAds.length ? <ConfirmButton className="danger-button schedule-delete-button" confirmText={`حذف جدول النشر بالكامل (${weekAds.length} تكليف)؟`} onConfirm={deleteWholeSchedule}><Trash size={17} />{deleting ? "جارٍ الحذف..." : "حذف الجدول"}</ConfirmButton> : null}
     </section>
 
@@ -133,6 +111,5 @@ export function SchedulePage() {
       />;
     })}</section>}
 
-    {byBranch.map(({ branch, rows }) => <BranchSchedulePdf key={`pdf-${branch.id}`} branch={branch} ads={rows} agents={agents} publishingSettings={publishingSettings} planStart={planStart} planEnd={planEnd} />)}
   </>;
 }

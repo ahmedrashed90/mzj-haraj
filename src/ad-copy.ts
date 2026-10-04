@@ -1,7 +1,24 @@
-import type { AgentType, HarajAd, PublishingSettings, SpecsStatus, StockGroup, WebsiteCarData } from "./types";
+import type { AgentContactSnapshot, AgentType, HarajAd, PublishingSettings, SpecsStatus, StockGroup, WebsiteCarData } from "./types";
 
 function clean(value: unknown) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+
+export function getAdContactSnapshots(ad: Pick<HarajAd, "contactAgentsSnapshot" | "agentId" | "agentNameSnapshot" | "agentPhoneSnapshot">) {
+  const rows = Array.isArray(ad.contactAgentsSnapshot) ? ad.contactAgentsSnapshot : [];
+  const cleaned = rows
+    .map((row) => ({ agentId: clean(row?.agentId), name: clean(row?.name), phone: clean(row?.phone) }))
+    .filter((row) => row.name || row.phone);
+  if (cleaned.length) return cleaned;
+  const fallbackName = clean(ad.agentNameSnapshot);
+  const fallbackPhone = clean(ad.agentPhoneSnapshot);
+  return fallbackName || fallbackPhone ? [{ agentId: clean(ad.agentId), name: fallbackName, phone: fallbackPhone }] : [];
+}
+
+export function areAdContactsReady(ad: Pick<HarajAd, "contactAgentsSnapshot" | "agentId" | "agentNameSnapshot" | "agentPhoneSnapshot">) {
+  const rows = getAdContactSnapshots(ad);
+  return rows.length > 0 && rows.every((row) => Boolean(row.name && row.phone));
 }
 
 function normalizeArabic(value: unknown) {
@@ -156,6 +173,7 @@ export function buildAdCopy(
   agentName?: string,
   agentPhone?: string,
   agentType: AgentType = "cash",
+  contactAgents?: AgentContactSnapshot[],
 ) {
   // advertiserName/settings are intentionally kept in the function contract for
   // the existing assignment snapshot/configuration, but the Haraj ad body itself
@@ -164,6 +182,10 @@ export function buildAdCopy(
   void settings;
   const contactName = clean(agentName);
   const contactPhone = clean(agentPhone);
+  const contactRows = (Array.isArray(contactAgents) ? contactAgents : [])
+    .map((row) => ({ agentId: clean(row?.agentId), name: clean(row?.name), phone: clean(row?.phone) }))
+    .filter((row) => row.name || row.phone);
+  if (!contactRows.length && (contactName || contactPhone)) contactRows.push({ agentId: "", name: contactName, phone: contactPhone });
   const bodyTitle = goodValue(websiteCar?.title) || [stock.carName, stock.statement, stock.modelYear].filter(goodValue).join(" - ");
   const adTitle = agentType === "installment" ? buildInstallmentTitle(stock) : bodyTitle;
   const lines: string[] = [bodyTitle, "", "متوفرة الآن"];
@@ -192,10 +214,13 @@ export function buildAdCopy(
     if (goodValue(stock.statement)) lines.push(`الفئة: ${stock.statement}`);
   }
 
-  if (contactName || contactPhone) {
+  if (contactRows.length) {
     lines.push("", "للتواصل:");
-    if (contactName) lines.push(contactName);
-    if (contactPhone) lines.push(`رقم الجوال: ${contactPhone}`);
+    contactRows.forEach((row) => {
+      if (row.name && row.phone) lines.push(`• ${row.name} — ${row.phone}`);
+      else if (row.name) lines.push(`• ${row.name}`);
+      else if (row.phone) lines.push(`• ${row.phone}`);
+    });
   }
 
   // Price is intentionally the final commercial block in the copy so it can be
@@ -252,6 +277,7 @@ export function enrichAssignmentsWithAdCopy<T extends Omit<HarajAd, "id">>(
         assignment.agentNameSnapshot,
         assignment.agentPhoneSnapshot,
         assignment.agentTypeSnapshot || "cash",
+        assignment.contactAgentsSnapshot,
       ),
     };
   });

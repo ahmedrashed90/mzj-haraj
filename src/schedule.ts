@@ -41,6 +41,17 @@ export function getSuggestedPlanWindow(value: Date | string = new Date()) {
   return { planStart, planEnd, weekStart: getWeekStartKey(planStart), isFridayPreparation: today.getDay() === 5 };
 }
 
+/** Automatic schedule: start today and continue through the coming Friday. */
+export function getAutomaticPlanWindow(value: Date | string = new Date()) {
+  const today = typeof value === "string" ? parseDateKey(value) : new Date(value);
+  today.setHours(12, 0, 0, 0);
+  const end = new Date(today);
+  end.setDate(end.getDate() + ((5 - today.getDay() + 7) % 7));
+  const planStart = dateKey(today);
+  const planEnd = dateKey(end);
+  return { planStart, planEnd, weekStart: getWeekStartKey(planStart), isFridayPreparation: today.getDay() === 5 };
+}
+
 export function formatDateArabic(value: string, options?: Intl.DateTimeFormatOptions) {
   if (!value) return "—";
   return parseDateKey(value).toLocaleDateString("ar-SA-u-nu-latn", options || { day: "numeric", month: "short", year: "numeric" });
@@ -96,6 +107,33 @@ export function publishingPeriodsDailyTotal(periods: PublishingPeriod[]) {
   return activePublishingPeriods(periods).reduce((sum, period) => sum + Math.max(0, Math.floor(Number(period.adCount || 0))), 0);
 }
 
+function orderedActiveContactAgents(periods: PublishingPeriod[], agents: Agent[]) {
+  const available = agents.filter((agent) => Boolean(agent.active));
+  const availableById = new Map(available.map((agent) => [agent.id, agent]));
+  const seen = new Set<string>();
+  const ordered: Agent[] = [];
+  activePublishingPeriods(periods).forEach((period) => {
+    period.agentIds.forEach((id) => {
+      const agent = availableById.get(id);
+      if (!agent || seen.has(agent.id)) return;
+      seen.add(agent.id);
+      ordered.push(agent);
+    });
+  });
+  available.forEach((agent) => {
+    if (seen.has(agent.id)) return;
+    seen.add(agent.id);
+    ordered.push(agent);
+  });
+  return ordered;
+}
+
+function rotateAgents<T>(rows: T[], offset: number) {
+  if (rows.length < 2) return [...rows];
+  const normalized = ((offset % rows.length) + rows.length) % rows.length;
+  return [...rows.slice(normalized), ...rows.slice(0, normalized)];
+}
+
 export function validatePublishingPeriods(periods: PublishingPeriod[], settings: PublishingSettings, agents: Agent[], branches: HarajAccount[]) {
   const dailyLimit = Math.max(0, Math.floor(Number(settings.dailyLimit || 0)));
   const active = activePublishingPeriods(periods);
@@ -109,6 +147,10 @@ export function validatePublishingPeriods(periods: PublishingPeriod[], settings:
     const available = period.agentIds.map((id) => agentById.get(id)).filter((agent): agent is Agent => Boolean(agent && isAgentAvailable(agent, activeBranchIds)));
     if (!available.length) return `فترة «${period.name}» لا تحتوي على مندوب نشط داخل فرع نشط.`;
   }
+  const activeContacts = orderedActiveContactAgents(periods, agents);
+  if (!activeContacts.length) return "لا يوجد مندوب نشط ببيانات تواصل صالحة لإضافتها داخل الإعلانات.";
+  const missingContact = activeContacts.filter((agent) => !String(agent.name || "").trim() || !String(agent.phone || "").trim());
+  if (missingContact.length) return `بيانات التواصل ناقصة للمناديب النشطين: ${missingContact.map((agent) => agent.name || agent.id).join("، ")}.`;
   return "";
 }
 
@@ -190,6 +232,8 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
       .map((id) => agentById.get(id))
       .filter((agent): agent is Agent => Boolean(agent && isAgentAvailable(agent, activeBranchIds))));
   });
+  const contactAgents = orderedActiveContactAgents(periods, agents);
+  if (!contactAgents.length) throw new Error("لا يوجد مندوب نشط لإضافته داخل بيانات التواصل في الإعلان.");
 
   const uniqueVehicleMap = new Map<string, StockGroup>();
   vehicles.forEach((row) => { if (row?.key && !uniqueVehicleMap.has(row.key)) uniqueVehicleMap.set(row.key, row); });
@@ -243,6 +287,7 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
 
   const weekStart = getWeekStartKey(planStart);
   const planId = `plan-${planStart}-${planEnd}-${Date.now()}`;
+  const existingRotationOffset = getPlanAds(existingAds, planStart, planEnd).length;
 
   return vehicleTargets.map((target, index): PublishingAssignmentDraft => {
     const vehicle = target.vehicle;
@@ -263,6 +308,11 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
       agentNameSnapshot: String(slot.agent.name || "").trim(),
       agentPhoneSnapshot: String(slot.agent.phone || "").trim(),
       agentTypeSnapshot: slot.agent.agentType === "installment" ? "installment" : "cash",
+      contactAgentsSnapshot: rotateAgents(contactAgents, existingRotationOffset + index).map((agent) => ({
+        agentId: agent.id,
+        name: String(agent.name || "").trim(),
+        phone: String(agent.phone || "").trim(),
+      })),
       publishingPeriodId: slot.period.id,
       publishingPeriodName: slot.period.name,
       publishingPeriodStart: slot.period.startTime,

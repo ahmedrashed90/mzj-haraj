@@ -1,5 +1,6 @@
 import { Check, Copy, LinkSimple, WarningCircle } from "@phosphor-icons/react";
 import { useState } from "react";
+import { areAdContactsReady, getAdContactSnapshots } from "../ad-copy";
 import type { HarajAd } from "../types";
 
 function fallbackCopy(text: string) {
@@ -56,7 +57,8 @@ export function AdCopyCard({ ad, compact = false }: { ad: HarajAd; compact?: boo
   const text = normalizeAdTextForPublishing(ad.adText, price);
   const title = clean(ad.adTitle);
   const compareKeyReady = ad.specsStatus === "matched";
-  const contactReady = Boolean(agentName && agentPhone);
+  const contactRows = getAdContactSnapshots(ad);
+  const contactReady = areAdContactsReady(ad);
   const priceReady = Boolean(price);
   const ready = compareKeyReady && Boolean(title) && Boolean(text) && contactReady && priceReady;
   const partial = ad.specsStatus === "partial";
@@ -77,8 +79,7 @@ export function AdCopyCard({ ad, compact = false }: { ad: HarajAd; compact?: boo
   if (!title) issues.push("عنوان إعلان حراج غير جاهز.");
   if (!compareKeyReady) issues.push(ad.specsIssue || (partial ? "CompareKey مرتبط لكن المواصفات غير مكتملة." : "المواصفات غير مرتبطة بـ CompareKey كامل."));
   if (!priceReady) issues.push("السعر غير متوفر في بيانات سيارة الموقع، لذلك الإعلان غير جاهز للنشر.");
-  if (!agentName) issues.push("اسم المندوب غير موجود في التكليف.");
-  if (!agentPhone) issues.push("رقم جوال المندوب غير موجود في التكليف.");
+  if (!contactReady) issues.push("بيانات أسماء وأرقام المناديب النشطين غير مكتملة داخل الإعلان.");
 
   return <div className={`ad-copy-card ${compact ? "compact-copy" : ""}`}>
     <div className="haraj-title-copy">
@@ -86,18 +87,18 @@ export function AdCopyCard({ ad, compact = false }: { ad: HarajAd; compact?: boo
       <button type="button" className="secondary-button compact" disabled={!title} onClick={() => void copyValue("title", title)}>{copiedKey === "title" ? <Check size={16} /> : <Copy size={16} />}{copiedKey === "title" ? "تم النسخ" : "نسخ العنوان"}</button>
     </div>
     <div className="ad-publish-values">
-      <div className="ad-publish-value"><span>الاسم</span><b>{agentName || "—"}</b><button type="button" className="copy-mini-button" disabled={!agentName} onClick={() => void copyValue("agent", agentName)}>{copiedKey === "agent" ? <Check size={14} /> : <Copy size={14} />}<em>{copiedKey === "agent" ? "تم" : "نسخ"}</em></button></div>
-      <div className="ad-publish-value"><span>رقم الجوال</span><b className="ltr-value">{agentPhone || "—"}</b><button type="button" className="copy-mini-button" disabled={!agentPhone} onClick={() => void copyValue("phone", agentPhone)}>{copiedKey === "phone" ? <Check size={14} /> : <Copy size={14} />}<em>{copiedKey === "phone" ? "تم" : "نسخ"}</em></button></div>
+      <div className="ad-publish-value"><span>المندوب المكلف</span><b>{agentName || "—"}</b><button type="button" className="copy-mini-button" disabled={!agentName} onClick={() => void copyValue("agent", agentName)}>{copiedKey === "agent" ? <Check size={14} /> : <Copy size={14} />}<em>{copiedKey === "agent" ? "تم" : "نسخ"}</em></button></div>
+      <div className="ad-publish-value"><span>جوال المكلف</span><b className="ltr-value">{agentPhone || "—"}</b><button type="button" className="copy-mini-button" disabled={!agentPhone} onClick={() => void copyValue("phone", agentPhone)}>{copiedKey === "phone" ? <Check size={14} /> : <Copy size={14} />}<em>{copiedKey === "phone" ? "تم" : "نسخ"}</em></button></div>
       <div className="ad-publish-value"><span>السعر في حراج</span><b>{price ? `${price} ريال` : "—"}</b><button type="button" className="copy-mini-button" disabled={!price} onClick={() => void copyValue("price", price)}>{copiedKey === "price" ? <Check size={14} /> : <Copy size={14} />}<em>{copiedKey === "price" ? "تم" : "نسخ"}</em></button></div>
     </div>
 
     <div className="ad-copy-actions">
-      <button className="secondary-button compact" disabled={!ready} onClick={() => void copyValue("ad", text)} title={!ready ? "يلزم CompareKey كامل + السعر + اسم ورقم المندوب" : "نسخ صيغة الإعلان كاملة"}>
+      <button className="secondary-button compact" disabled={!ready} onClick={() => void copyValue("ad", text)} title={!ready ? "يلزم CompareKey كامل + السعر + بيانات جميع المناديب النشطين" : "نسخ صيغة الإعلان كاملة"}>
         {copiedKey === "ad" ? <Check size={16} /> : <Copy size={16} />}{copiedKey === "ad" ? "تم النسخ" : "نسخ صيغة الإعلان"}
       </button>
       {ad.websitePermalink ? <a className="icon-button" href={ad.websitePermalink} target="_blank" rel="noreferrer" title="فتح صفحة السيارة بالموقع"><LinkSimple size={16} /></a> : null}
       <span className={`specs-status ${ready ? "matched" : partial ? "partial" : "missing"}`}>
-        {ready ? "جاهز للنشر" : compareKeyReady ? "بيانات النشر ناقصة" : partial ? "CompareKey جزئي" : "CompareKey غير جاهز"}
+        {ready ? `جاهز للنشر · ${contactRows.length} مناديب` : compareKeyReady ? "بيانات النشر ناقصة" : partial ? "CompareKey جزئي" : "CompareKey غير جاهز"}
       </span>
     </div>
     {issues.length ? <div className="copy-warning"><WarningCircle size={15} /><div>{issues.map((issue) => <span key={issue}>{issue}</span>)}</div></div> : null}

@@ -35,6 +35,12 @@ export type PublishingPeriod = {
   updatedAt?: string;
 };
 
+export type AgentContactSnapshot = {
+  agentId: string;
+  name: string;
+  phone: string;
+};
+
 export type Agent = {
   id: string;
   name: string;
@@ -65,10 +71,12 @@ export type HarajAd = {
   accountId?: string;
   branchId?: string;
   agentId: string;
-  /** Frozen rep identity used in the prepared Haraj ad. */
+  /** Frozen assigned-rep identity used for the publishing responsibility. */
   agentNameSnapshot?: string;
   agentPhoneSnapshot?: string;
   agentTypeSnapshot?: AgentType;
+  /** All active reps frozen into the ad contact block, rotated per ad. */
+  contactAgentsSnapshot?: AgentContactSnapshot[];
   /** Frozen publishing-period data used when this assignment was created. */
   publishingPeriodId?: string;
   publishingPeriodName?: string;
