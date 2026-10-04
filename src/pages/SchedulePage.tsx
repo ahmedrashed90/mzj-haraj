@@ -3,10 +3,10 @@ import { ArrowLeft, ArrowRight, CalendarBlank, CheckCircle, ClipboardText, Downl
 import { useSearchParams } from "react-router-dom";
 import { useAppData } from "../AppDataContext";
 import { removeScheduleAds } from "../data";
-import { addDaysKey, adBranchId, dateKey, formatDateArabic, formatPlanRange, getPlanDays, getPlanWindowFromAds, getWeekStartKey, isPublished } from "../schedule";
+import { addDaysKey, dateKey, formatDateArabic, formatPlanRange, getPlanDays, getPlanWindowFromAds, getWeekStartKey, isPublished } from "../schedule";
 import { ConfirmButton, EmptyState, PageTitle } from "../components/Ui";
 import { PublishingDayAccordion } from "../components/PublishingDayAccordion";
-import { exportBranchScheduleWord } from "../word-export";
+import { exportWeeklyScheduleWord } from "../word-export";
 
 export function SchedulePage() {
   const { accounts, agents, ads, publishingSettings } = useAppData();
@@ -18,7 +18,6 @@ export function SchedulePage() {
   const weekStart = getWeekStartKey(params.get("week") || getWeekStartKey());
   const today = dateKey(new Date());
 
-  const branchById = useMemo(() => new Map(accounts.map((branch) => [branch.id, branch])), [accounts]);
   const weekAds = useMemo(() => ads.filter((ad) => ad.weekStart === weekStart).sort((a, b) => String(a.scheduledDate || "").localeCompare(String(b.scheduledDate || "")) || Number(a.scheduleOrder || 0) - Number(b.scheduleOrder || 0) || Number(a.agentSequence || a.periodAgentSequence || 0) - Number(b.agentSequence || b.periodAgentSequence || 0)), [ads, weekStart]);
   const { planStart, planEnd } = getPlanWindowFromAds(weekAds, weekStart);
   const days = getPlanDays(planStart, planEnd);
@@ -26,7 +25,7 @@ export function SchedulePage() {
   const activeAgents = agents.filter((agent) => agent.active).length;
   const activeBranches = accounts.filter((branch) => branch.active).length;
   const firstOpenDay = days.find((day) => day.key === today && weekAds.some((ad) => ad.scheduledDate === day.key))?.key || days.find((day) => weekAds.some((ad) => ad.scheduledDate === day.key))?.key || days[0]?.key || "";
-  const byBranch = useMemo(() => accounts.map((branch) => ({ branch, rows: weekAds.filter((ad) => ad.status !== "closed" && adBranchId(ad) === branch.id) })).filter((item) => item.rows.length), [accounts, weekAds]);
+  const exportRows = useMemo(() => weekAds.filter((ad) => ad.status !== "closed"), [weekAds]);
 
   function goWeek(offset: number) {
     setParams({ week: addDaysKey(weekStart, offset * 7) });
@@ -51,16 +50,14 @@ export function SchedulePage() {
     }
   }
 
-  async function exportBranchWord(branchId: string) {
-    const branch = branchById.get(branchId);
-    if (!branch || exporting) return;
-    const rows = weekAds.filter((ad) => ad.status !== "closed" && adBranchId(ad) === branchId);
-    if (!rows.length) return window.alert("لا توجد إعلانات لهذا الفرع لتصديرها.");
-    setExporting(branchId);
+  async function exportWeekWord() {
+    if (exporting) return;
+    if (!exportRows.length) return window.alert("لا توجد إعلانات في هذا الأسبوع لتصديرها.");
+    setExporting("week");
     try {
-      await exportBranchScheduleWord({
-        branch,
-        ads: rows,
+      await exportWeeklyScheduleWord({
+        accounts,
+        ads: exportRows,
         agents,
         publishingSettings,
         planStart,
@@ -91,8 +88,8 @@ export function SchedulePage() {
     </section>
 
     <section className="schedule-control-bar panel">
-      <div className="schedule-account-summary"><span>حساب حراج المستخدم</span><strong>{publishingSettings.accountName || "غير محدد"}</strong><small>ملف Word مستقل لكل فرع بصيغة DOCX</small></div>
-      <div className="schedule-word-actions">{byBranch.map(({ branch, rows }) => <button key={branch.id} className="secondary-button word-branch-button" onClick={() => void exportBranchWord(branch.id)} disabled={exporting === branch.id}><DownloadSimple size={17} />{exporting === branch.id ? "جارٍ التجهيز..." : `Word ${branch.name}`}<span>{rows.length}</span></button>)}</div>
+      <div className="schedule-account-summary"><span>حساب حراج المستخدم</span><strong>{publishingSettings.accountName || "غير محدد"}</strong><small>ملف Word واحد لجميع إعلانات الأسبوع بصيغة DOCX</small></div>
+      <div className="schedule-word-actions"><button className="secondary-button word-branch-button" onClick={() => void exportWeekWord()} disabled={exporting === "week" || !exportRows.length}><DownloadSimple size={17} />{exporting === "week" ? "جارٍ التجهيز..." : "Word إعلانات الأسبوع"}<span>{exportRows.length}</span></button></div>
       {weekAds.length ? <ConfirmButton className="danger-button schedule-delete-button" confirmText={`حذف جدول النشر بالكامل (${weekAds.length} تكليف)؟`} onConfirm={deleteWholeSchedule}><Trash size={17} />{deleting ? "جارٍ الحذف..." : "حذف الجدول"}</ConfirmButton> : null}
     </section>
 

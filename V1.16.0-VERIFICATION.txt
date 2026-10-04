@@ -1,0 +1,8 @@
+MZJ Haraj Manager v1.16.0 CLEAN - Verification
+
+Change scope:
+- Word export only.
+- Replaced branch-by-branch Word files with one weekly Word file.
+- Weekly DOCX contains all non-closed ads across all branches, grouped by publishing day.
+- Added branch column inside the weekly Word table.
+- No change to schedule generation, daily limits, agent rotation, stock logic, Firestore collections, or publishing logic.

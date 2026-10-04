@@ -619,7 +619,7 @@ dd { margin: 0; font-weight: 700; }
   .selection-actions > button:last-child { grid-column: 1 / -1; }
 }
 
-/* v1.15.0 - global rep rotation without publishing periods */
+/* v1.16.0 - global rep rotation without publishing periods; weekly Word export */
 .alert.info { color: #2d628f; background: var(--blue-soft); border: 1px solid #cfe1f1; }
 .schedule-title-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 

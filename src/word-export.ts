@@ -1,5 +1,4 @@
-import { getBranchAdvertiserName } from "./branch-advertiser";
-import { formatDateArabic, formatPlanRange, getPlanDays, isPublished } from "./schedule";
+import { adBranchId, formatDateArabic, formatPlanRange, getPlanDays, isPublished } from "./schedule";
 import type { Agent, HarajAccount, HarajAd, PublishingSettings } from "./types";
 
 const POLICIES = [
@@ -74,26 +73,26 @@ function summaryTable(rows: Array<[string, string]>) {
 }
 
 function buildDocumentXml(args: {
-  branch: HarajAccount;
+  accounts: HarajAccount[];
   ads: HarajAd[];
   agents: Agent[];
   publishingSettings: PublishingSettings;
   planStart: string;
   planEnd: string;
 }) {
-  const { branch, ads, agents, publishingSettings, planStart, planEnd } = args;
+  const { accounts, ads, agents, publishingSettings, planStart, planEnd } = args;
   const agentById = new Map(agents.map((agent) => [agent.id, agent]));
+  const branchById = new Map(accounts.map((branch) => [branch.id, branch]));
   const planDays = getPlanDays(planStart, planEnd);
   const published = ads.filter(isPublished).length;
   const parts: string[] = [];
 
   parts.push(paragraph("MZJ - إدارة إعلانات حراج", { bold: true, size: 34, center: true, after: 100 }));
-  parts.push(paragraph(`جدول النشر - ${branch.name}`, { bold: true, size: 30, center: true, after: 80 }));
+  parts.push(paragraph("إعلانات الأسبوع", { bold: true, size: 30, center: true, after: 80 }));
   parts.push(paragraph(`حساب حراج: ${publishingSettings.accountName || "—"}`, { center: true }));
-  parts.push(paragraph(`اسم المعرض داخل الإعلان: ${getBranchAdvertiserName(branch, publishingSettings.accountName)}`, { center: true }));
   parts.push(paragraph(formatPlanRange(planStart, planEnd), { center: true, after: 160 }));
   parts.push(summaryTable([
-    ["إجمالي تكليفات الفرع", String(ads.length)],
+    ["إجمالي إعلانات الأسبوع", String(ads.length)],
     ["تم النشر / استلام الرابط", String(published)],
     ["حد حساب حراج اليومي", String(publishingSettings.dailyLimit || 0)],
     ["عدد أيام الجدول", String(planDays.length)],
@@ -109,9 +108,10 @@ function buildDocumentXml(args: {
     parts.push(paragraph(`${day.name} - ${formatDateArabic(day.key, { day: "numeric", month: "long", year: "numeric" })}`, { bold: true, size: 28, after: 80 }));
     parts.push(paragraph(`إعلانات اليوم: ${rows.length}`, { bold: true, size: 21, after: 120 }));
     parts.push(table(
-      ["#", "المندوب", "النوع", "السيارة / البيان", "الموديل", "رابط الإعلان"],
+      ["#", "الفرع", "المندوب", "النوع", "السيارة / البيان", "الموديل", "رابط الإعلان"],
       rows.map((ad, index) => [
         String(index + 1),
+        branchById.get(adBranchId(ad))?.name || "—",
         agentById.get(ad.agentId)?.name || ad.agentNameSnapshot || "—",
         ad.agentTypeSnapshot === "installment" ? "تقسيط" : "كاش",
         [ad.carName, ad.statement].filter(Boolean).join(" - "),
@@ -271,10 +271,6 @@ function buildDocxBlob(documentXml: string) {
   return new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
 }
 
-function safeFileName(value: string) {
-  return value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "-").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "branch";
-}
-
 function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -286,17 +282,16 @@ function downloadBlob(blob: Blob, fileName: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
-export async function exportBranchScheduleWord(args: {
-  branch: HarajAccount;
+export async function exportWeeklyScheduleWord(args: {
+  accounts: HarajAccount[];
   ads: HarajAd[];
   agents: Agent[];
   publishingSettings: PublishingSettings;
   planStart: string;
   planEnd: string;
 }) {
-  if (!args.ads.length) throw new Error("لا توجد إعلانات لهذا الفرع لتصديرها.");
+  if (!args.ads.length) throw new Error("لا توجد إعلانات في هذا الأسبوع لتصديرها.");
   const documentXml = buildDocumentXml(args);
   const blob = buildDocxBlob(documentXml);
-  const name = safeFileName(args.branch.name);
-  downloadBlob(blob, `MZJ-Haraj-${name}-${args.planStart}-${args.planEnd}.docx`);
+  downloadBlob(blob, `MZJ-Haraj-Week-${args.planStart}-${args.planEnd}.docx`);
 }
