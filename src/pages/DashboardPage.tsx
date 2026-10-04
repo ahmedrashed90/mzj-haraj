@@ -30,7 +30,7 @@ export function DashboardPage() {
 
     <section className="stats-grid dashboard-stats">
       <StatCard label="حد حساب حراج اليومي" value={publishingSettings.dailyLimit || 0} hint={publishingSettings.accountName || "اسم الحساب غير محدد"} tone="info" />
-      <StatCard label="سعة الفترة" value={capacity} hint={`${weekAds.length} مجدول · ${Math.max(0, capacity - weekAds.length)} متبقي`} />
+      <StatCard label="سعة الجدول" value={capacity} hint={`${weekAds.length} مجدول · ${Math.max(0, capacity - weekAds.length)} متبقي`} />
       <StatCard label="تم النشر" value={published} hint="استلمنا الرابط" tone="good" />
       <StatCard label="بانتظار النشر" value={pending} hint="بدون رابط حتى الآن" tone={pending ? "warn" : "good"} />
       <StatCard label="متأخر" value={overdue} hint="موعده عدى" tone={overdue ? "danger" : "good"} />
@@ -41,7 +41,7 @@ export function DashboardPage() {
     </section>
 
     <section className="dashboard-columns">
-      <div className="panel"><div className="panel-head"><div><h2>حساب النشر الحالي</h2><p>حساب حراج واحد، والحد اليومي يتوزع حسب فترات النشر وترتيب المناديب المحدد داخل كل فترة.</p></div></div><div className="single-account-dashboard"><span>حساب حراج</span><strong>{publishingSettings.accountName || "غير محدد"}</strong><div><span>الحد اليومي <b>{publishingSettings.dailyLimit || 0}</b></span><span>سعة الفترة <b>{capacity}</b></span><span>المجدول <b>{weekAds.length}</b></span></div><Progress value={weekAds.length} max={Math.max(capacity, weekAds.length || 1)} /></div></div>
+      <div className="panel"><div className="panel-head"><div><h2>حساب النشر الحالي</h2><p>حساب حراج واحد، والحد اليومي يتوزع تلقائيًا على جميع المناديب النشطين بالتتابع بدون فترات نشر.</p></div></div><div className="single-account-dashboard"><span>حساب حراج</span><strong>{publishingSettings.accountName || "غير محدد"}</strong><div><span>الحد اليومي <b>{publishingSettings.dailyLimit || 0}</b></span><span>سعة الجدول <b>{capacity}</b></span><span>المجدول <b>{weekAds.length}</b></span></div><Progress value={weekAds.length} max={Math.max(capacity, weekAds.length || 1)} /></div></div>
       <div className="panel"><div className="panel-head"><div><h2>تغطية الاستوك</h2><p>{stockFetchedAt ? `آخر قراءة: ${new Date(stockFetchedAt).toLocaleString("ar-SA-u-nu-latn")}` : "لم تتم القراءة بعد"}</p></div></div>{!stock.length ? <EmptyState title="لا توجد بيانات" text="بانتظار قراءة الاستوك." /> : <><div className="coverage-big"><strong>{coverage.coveredCount}</strong><span>من {stock.length} سيارة/فئة في الدورة {coverage.cycle}</span></div><Progress value={coverage.coveredCount} max={stock.length} /><div className="coverage-caption"><span>تمت تغطيته: {coverage.coveredCount}</span><span>متبقي: {coverage.eligibleRows.length}</span></div></>}</div>
     </section>
 

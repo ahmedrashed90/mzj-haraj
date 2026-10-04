@@ -1,81 +1,22 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { ArrowDown, ArrowUp, Buildings, Clock, FloppyDisk, Plus, Storefront, Trash, UsersThree, WarningCircle, X } from "@phosphor-icons/react";
+import { Buildings, FloppyDisk, Plus, Storefront, Trash, UsersThree, WarningCircle } from "@phosphor-icons/react";
 import { useAppData } from "../AppDataContext";
 import {
   addAccount,
   addAgent,
-  addPublishingPeriod,
   removeAccount,
   removeAgent,
-  removePublishingPeriod,
   savePublishingSettings,
   updateAccount,
   updateAgent,
-  updatePublishingPeriod,
 } from "../data";
 import { dateKey } from "../schedule";
 import { defaultBranchAdvertiserName } from "../branch-advertiser";
-import type { Agent, AgentType, HarajAccount, PublishingPeriod } from "../types";
+import type { AgentType } from "../types";
 import { ConfirmButton, EmptyState, PageTitle, StatCard } from "../components/Ui";
 
-function agentTypeLabel(value?: AgentType) { return value === "installment" ? "تقسيط" : "كاش"; }
-function moveItem(values: string[], index: number, direction: -1 | 1) {
-  const nextIndex = index + direction;
-  if (nextIndex < 0 || nextIndex >= values.length) return values;
-  const next = [...values];
-  [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
-  return next;
-}
-
-function AgentOrderPicker({ agentIds, onChange, agents, accounts }: { agentIds: string[]; onChange: (ids: string[]) => void; agents: Agent[]; accounts: HarajAccount[] }) {
-  const [pick, setPick] = useState("");
-  const branchById = useMemo(() => new Map(accounts.map((branch) => [branch.id, branch])), [accounts]);
-  const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
-  const availableToAdd = agents.filter((agent) => !agentIds.includes(agent.id));
-  function add() {
-    if (!pick || agentIds.includes(pick)) return;
-    onChange([...agentIds, pick]); setPick("");
-  }
-  return <div className="period-agent-picker">
-    <div className="period-agent-add"><select value={pick} onChange={(e) => setPick(e.target.value)}><option value="">اختر مندوب لإضافته للفترة</option>{availableToAdd.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {branchById.get(agent.accountId || "")?.name || "بدون فرع"} · {agentTypeLabel(agent.agentType)}</option>)}</select><button type="button" className="secondary-button compact" onClick={add} disabled={!pick}><Plus size={16} />إضافة</button></div>
-    {!agentIds.length ? <div className="period-agent-empty">لم يتم اختيار مناديب لهذه الفترة.</div> : <div className="period-agent-order">{agentIds.map((id, index) => {
-      const agent = agentById.get(id);
-      return <div className="period-agent-row" key={id}><span className="order-number">{index + 1}</span><div><b>{agent?.name || "مندوب محذوف"}</b><small>{branchById.get(agent?.accountId || "")?.name || "بدون فرع"} · {agentTypeLabel(agent?.agentType)}{agent && !agent.active ? " · موقوف" : ""}</small></div><div className="period-agent-actions"><button type="button" className="icon-button" title="رفع الترتيب" disabled={index === 0} onClick={() => onChange(moveItem(agentIds, index, -1))}><ArrowUp size={15} /></button><button type="button" className="icon-button" title="خفض الترتيب" disabled={index === agentIds.length - 1} onClick={() => onChange(moveItem(agentIds, index, 1))}><ArrowDown size={15} /></button><button type="button" className="icon-danger" title="إزالة من الفترة" onClick={() => onChange(agentIds.filter((item) => item !== id))}><X size={15} /></button></div></div>;
-    })}</div>}
-  </div>;
-}
-
-function PeriodEditor({ period, agents, accounts, onError, onNotice }: { period: PublishingPeriod; agents: Agent[]; accounts: HarajAccount[]; onError: (value: string) => void; onNotice: (value: string) => void }) {
-  const [name, setName] = useState(period.name);
-  const [startTime, setStartTime] = useState(period.startTime);
-  const [endTime, setEndTime] = useState(period.endTime);
-  const [agentIds, setAgentIds] = useState<string[]>(period.agentIds || []);
-  const [active, setActive] = useState(period.active !== false);
-  const [saving, setSaving] = useState(false);
-  useEffect(() => { setName(period.name); setStartTime(period.startTime); setEndTime(period.endTime); setAgentIds(period.agentIds || []); setActive(period.active !== false); }, [period]);
-  async function save() {
-    onError(""); onNotice("");
-    if (!name.trim()) return onError("اكتب اسم فترة النشر.");
-    if (!startTime || !endTime || startTime >= endTime) return onError(`راجع وقت البداية والنهاية لفترة ${name || period.name}.`);
-    if (!agentIds.length) return onError(`اختر مندوبًا واحدًا على الأقل لفترة ${name}.`);
-    setSaving(true);
-    try {
-      await updatePublishingPeriod(period.id, { name: name.trim(), startTime, endTime, agentIds, active });
-      onNotice(`تم حفظ فترة ${name.trim()} وترتيب المناديب بداخلها.`);
-    } catch (e) { onError(e instanceof Error ? e.message : "تعذر حفظ فترة النشر"); }
-    finally { setSaving(false); }
-  }
-  return <article className={`publishing-period-card ${active ? "" : "disabled"}`}>
-    <div className="period-card-head"><div><Clock size={20} /><div><strong>{period.name}</strong><span>{period.startTime} - {period.endTime}</span></div></div><label className="switch-label tiny"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /><span>{active ? "نشطة" : "موقوفة"}</span></label></div>
-    <div className="period-fields"><label>اسم الفترة<input value={name} onChange={(e) => setName(e.target.value)} /></label><label>من<input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} /></label><label>إلى<input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} /></label></div>
-    <div className="period-order-head"><div><b>المناديب بالترتيب داخل الفترة</b><span>الترتيب مستمر بين الأيام: بعد آخر مندوب في اليوم يكمل اليوم التالي من المندوب الذي بعده، وبعد آخر اسم يبدأ من الأول.</span></div></div>
-    <AgentOrderPicker agentIds={agentIds} onChange={setAgentIds} agents={agents} accounts={accounts} />
-    <div className="period-card-actions"><button type="button" className="secondary-button" onClick={() => void save()} disabled={saving}><FloppyDisk size={17} />{saving ? "جارٍ الحفظ" : "حفظ الفترة"}</button><ConfirmButton className="danger-button" confirmText={`حذف فترة ${period.name}؟`} onConfirm={() => removePublishingPeriod(period.id)}><Trash size={16} />حذف الفترة</ConfirmButton></div>
-  </article>;
-}
-
 export function AccountsPage() {
-  const { accounts, agents, ads, publishingSettings, publishingPeriods } = useAppData();
+  const { accounts, agents, ads, publishingSettings } = useAppData();
   const [harajName, setHarajName] = useState("");
   const [dailyLimit, setDailyLimit] = useState("");
   const [branchName, setBranchName] = useState("");
@@ -87,10 +28,6 @@ export function AccountsPage() {
   const [agentPhone, setAgentPhone] = useState("");
   const [agentBranchId, setAgentBranchId] = useState("");
   const [agentType, setAgentType] = useState<AgentType>("cash");
-  const [periodName, setPeriodName] = useState("");
-  const [periodStart, setPeriodStart] = useState("");
-  const [periodEnd, setPeriodEnd] = useState("");
-  const [periodAgentIds, setPeriodAgentIds] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
@@ -105,8 +42,6 @@ export function AccountsPage() {
   const unassignedActiveAgents = agents.filter((agent) => agent.active && (!agent.accountId || !activeBranchIds.has(agent.accountId))).length;
   const activeBranches = accounts.filter((branch) => branch.active !== false && activeAgents.some((agent) => agent.accountId === branch.id));
   const activeAdCountAgent = (id: string) => ads.filter((ad) => ad.status !== "closed" && ad.agentId === id).length;
-  const activePeriodsCount = publishingPeriods.filter((period) => period.active !== false).length;
-  const periodConfigReady = Number(publishingSettings.dailyLimit || 0) > 0 && activePeriodsCount > 0;
 
   async function saveHarajSettings(event: FormEvent) {
     event.preventDefault(); setError(""); setNotice("");
@@ -148,40 +83,26 @@ export function AccountsPage() {
     finally { setSaving(false); }
   }
 
-  async function createPeriod(event: FormEvent) {
-    event.preventDefault(); setError(""); setNotice("");
-    if (!periodName.trim()) return setError("اكتب اسم فترة النشر.");
-    if (!periodStart || !periodEnd || periodStart >= periodEnd) return setError("حدد وقت بداية ونهاية صحيح لفترة النشر.");
-    if (!periodAgentIds.length) return setError("اختر مناديب الفترة وحدد ترتيبهم.");
-    setSaving(true);
-    try {
-      const maxOrder = publishingPeriods.reduce((max, item) => Math.max(max, Number(item.sortOrder || 0)), 0);
-      await addPublishingPeriod({ name: periodName.trim(), startTime: periodStart, endTime: periodEnd, adCount: 1, agentIds: periodAgentIds, active: true, sortOrder: maxOrder + 10 });
-      setPeriodName(""); setPeriodStart(""); setPeriodEnd(""); setPeriodAgentIds([]);
-      setNotice("تمت إضافة فترة النشر وترتيب المناديب.");
-    } catch (e) { setError(e instanceof Error ? e.message : "تعذر إضافة فترة النشر"); }
-    finally { setSaving(false); }
-  }
+
 
   return <>
-    <PageTitle title="إعداد النشر والمناديب" subtitle="حدد حساب حراج والحد اليومي، نوع كل مندوب، ثم قسم اليوم إلى فترات نشر وحدد مناديب كل فترة بالترتيب." />
+    <PageTitle title="إعداد النشر والمناديب" subtitle="حدد حساب حراج والحد اليومي، وأضف المناديب النشطين. التوزيع يتم تلقائيًا على جميع المناديب بالتتابع بدون فترات نشر." />
     {error ? <div className="alert error">{error}</div> : null}
     {notice ? <div className="alert success">{notice}</div> : null}
     {!publishingSettings.accountName || !publishingSettings.dailyLimit ? <div className="alert warning"><WarningCircle size={19} />احفظ اسم حساب حراج والحد اليومي قبل إنشاء جدول نشر جديد.</div> : null}
-    {unassignedActiveAgents ? <div className="alert warning"><WarningCircle size={19} />يوجد {unassignedActiveAgents} مندوب نشط بدون فرع نشط. لن يدخل في أي فترة نشر.</div> : null}
-    {publishingSettings.dailyLimit && !periodConfigReady ? <div className="alert warning"><WarningCircle size={19} />أضف فترة نشر نشطة واحدة على الأقل قبل إنشاء جدول جديد. عدد الإعلانات اليومي يؤخذ من الحد اليومي فقط.</div> : null}
+    {unassignedActiveAgents ? <div className="alert warning"><WarningCircle size={19} />يوجد {unassignedActiveAgents} مندوب نشط بدون فرع نشط. لن يدخل في التوزيع حتى يتم ربطه بفرع نشط.</div> : null}
 
     <section className="stats-grid compact-stats">
       <StatCard label="حد حساب حراج اليومي" value={publishingSettings.dailyLimit || 0} hint="إجمالي الشركة في اليوم" tone="info" />
-      <StatCard label="فترات النشر النشطة" value={activePeriodsCount} hint={periodConfigReady ? "لتوزيع أوقات النشر" : "أضف فترة نشطة"} tone={periodConfigReady ? "good" : "warn"} />
+      <StatCard label="المناديب داخل التوزيع" value={activeAgents.length} hint="دور واحد مستمر على جميع النشطين" tone="good" />
       <StatCard label="المجدول اليوم" value={todayAds.length} hint={`متبقي ${Math.max(0, publishingSettings.dailyLimit - todayAds.length)}`} tone="good" />
-      <StatCard label="المناديب النشطون" value={activeAgents.length} hint={`${activeBranches.length} فروع نشطة`} />
+      <StatCard label="الفروع النشطة" value={activeBranches.length} hint="الفرع يتبع المندوب المكلف" />
     </section>
 
     <section className="panel single-account-panel">
-      <div className="panel-head"><div><h2><Storefront size={21} /> حساب حراج المستخدم حاليًا</h2><p>الحد اليومي هو عدد الإعلانات الثابت لكل يوم نشر. فترات النشر بالأسفل تحدد الوقت والمندوب فقط ولا تضيف أعدادًا مستقلة.</p></div></div>
+      <div className="panel-head"><div><h2><Storefront size={21} /> حساب حراج المستخدم حاليًا</h2><p>الحد اليومي هو عدد الإعلانات الثابت لكل يوم نشر، والنظام يوزع هذه الإعلانات تلقائيًا على جميع المناديب النشطين بالتتابع.</p></div></div>
       <form className="publishing-settings-form" onSubmit={saveHarajSettings}><label>اسم حساب / متجر حراج<input value={harajName} onChange={(e) => setHarajName(e.target.value)} placeholder="اكتب الاسم كما يظهر في حراج" /></label><label>الحد اليومي للحساب<input type="number" min="1" value={dailyLimit} onChange={(e) => setDailyLimit(e.target.value)} placeholder="مثال: 15" /></label><button className="primary-button" disabled={saving}><FloppyDisk size={18} />حفظ إعداد النشر</button></form>
-      <div className="single-account-rule"><strong>قاعدة العدد:</strong> الرقم المكتوب في «الحد اليومي للحساب» هو العدد النهائي لكل يوم. مثال: 3 إعلانات يوميًا = 21 إعلانًا في أسبوع كامل من السبت إلى الجمعة. فترات النشر تستخدم فقط لتوزيع المواعيد وترتيب المناديب.</div>
+      <div className="single-account-rule"><strong>قاعدة العدد والتوزيع:</strong> الرقم المكتوب في «الحد اليومي للحساب» هو العدد النهائي لكل يوم. مثال: 3 إعلانات يوميًا = 21 إعلانًا في أسبوع كامل من السبت إلى الجمعة. كل إعلان ينتقل تلقائيًا للمندوب التالي من جميع المناديب النشطين، ويستمر الدور بين الأيام بدون إعادة البداية.</div>
     </section>
 
     <section className="two-form-columns setup-grid">
@@ -189,16 +110,17 @@ export function AccountsPage() {
       <form className="panel form-panel" onSubmit={createAgent}><div className="panel-head"><div><h2><UsersThree size={20} /> إضافة مندوب</h2><p>حدد الفرع ونوع المندوب. نوع «تقسيط» يجهز عنوان حراج تمويلي تلقائيًا.</p></div></div><div className="form-grid"><label>اسم المندوب<input value={agentName} onChange={(e) => setAgentName(e.target.value)} /></label><label>رقم الجوال<input value={agentPhone} onChange={(e) => setAgentPhone(e.target.value)} inputMode="tel" /></label></div><div className="form-grid"><label>الفرع<select value={agentBranchId} onChange={(e) => setAgentBranchId(e.target.value)}><option value="">اختر الفرع</option>{accounts.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label><label>نوع المندوب<select value={agentType} onChange={(e) => setAgentType(e.target.value as AgentType)}><option value="cash">كاش</option><option value="installment">تقسيط</option></select></label></div><button className="primary-button" disabled={saving || !accounts.length}><Plus size={18} />إضافة المندوب</button></form>
     </section>
 
-    <section className="panel publishing-periods-panel">
-      <div className="panel-head"><div><h2><Clock size={21} /> فترات النشر</h2><p>حدد أوقات النشر والمناديب المشاركين وترتيبهم. العدد اليومي لا يُكتب هنا؛ النظام يوزع الحد اليومي تلقائيًا، وتسلسل المناديب يستمر بين الأيام ولا يبدأ من الأول كل يوم.</p></div><span className={`period-total-badge ${periodConfigReady ? "ready" : "warn"}`}>{activePeriodsCount} فترة نشطة</span></div>
-      <form className="new-period-form" onSubmit={createPeriod}><div className="period-fields"><label>اسم الفترة<input value={periodName} onChange={(e) => setPeriodName(e.target.value)} placeholder="مثال: الفترة الصباحية" /></label><label>من<input type="time" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} /></label><label>إلى<input type="time" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} /></label></div><div className="period-order-head"><div><b>مناديب الفترة وترتيب النشر</b><span>أضف المناديب ثم استخدم الأسهم لترتيبهم. عدد الإعلانات يأتي من الحد اليومي فقط، والتسلسل يكمل تلقائيًا من آخر مندوب تم استخدامه.</span></div></div><AgentOrderPicker agentIds={periodAgentIds} onChange={setPeriodAgentIds} agents={agents} accounts={accounts} /><button className="primary-button" disabled={saving || !agents.length}><Plus size={18} />إضافة فترة النشر</button></form>
-      {!publishingPeriods.length ? <EmptyState title="لا توجد فترات نشر" text="أضف أول فترة وحدد وقتها والمناديب وترتيبهم." /> : <div className="publishing-period-list">{publishingPeriods.map((period) => <PeriodEditor key={period.id} period={period} agents={agents} accounts={accounts} onError={setError} onNotice={setNotice} />)}</div>}
+    <section className="panel">
+      <div className="panel-head"><div><h2><UsersThree size={20} /> دور التوزيع التلقائي</h2><p>هذا هو ترتيب المناديب الذي يستخدمه الجدول. بعد آخر اسم يكمل من الأول، والدور لا يبدأ من جديد مع بداية كل يوم.</p></div></div>
+      {!activeAgents.length ? <EmptyState title="لا يوجد مناديب داخل الدور" text="فعّل المندوب واربطه بفرع نشط ليدخل تلقائيًا في التوزيع." /> : <div className="branch-summary-grid">{activeAgents.map((agent, index) => <div className="branch-summary-card" key={agent.id}><strong>{index + 1}. {agent.name}</strong><span>{accounts.find((branch) => branch.id === agent.accountId)?.name || "بدون فرع"}</span><b>{agent.agentType === "installment" ? "تقسيط" : "كاش"}</b><small>{agent.phone}</small></div>)}</div>}
     </section>
+
+
 
     <section className="panel"><div className="panel-head"><div><h2>الفروع</h2><p>لكل فرع اسم معرض مستقل يظهر داخل بياناته ويمكن تعديله في أي وقت.</p></div></div>{!accounts.length ? <EmptyState title="لا توجد فروع" text="أضف الفروع التي يعمل بها المناديب." /> : <div className="account-admin-grid">{accounts.map((branch) => { const reps = agents.filter((agent) => agent.accountId === branch.id); const active = reps.filter((agent) => agent.active && branch.active !== false).length; return <article className={`account-admin-card ${branch.active ? "" : "disabled"}`} key={branch.id}><div className="account-card-head"><div><strong>{branch.name}</strong><span>{branch.note || "فرع داخلي"}</span></div><label className="switch-label"><input type="checkbox" checked={branch.active} onChange={(e) => void updateAccount(branch.id, { active: e.target.checked })} /><span>{branch.active ? "نشط" : "موقوف"}</span></label></div><div className="inline-editor"><span>إجمالي المناديب: <b>{reps.length}</b></span><span>النشطون: <b>{active}</b></span></div><div className="branch-advertiser-editor"><label>اسم المعرض داخل صيغة الإعلان<input value={branchAdvertiserDrafts[branch.id] ?? branch.advertiserName ?? defaultBranchAdvertiserName(branch.name)} onChange={(e) => setBranchAdvertiserDrafts((current) => ({ ...current, [branch.id]: e.target.value }))} /></label><button className="secondary-button compact" onClick={() => void saveBranchAdvertiser(branch.id)} disabled={savingBranchId === branch.id}><FloppyDisk size={16} />{savingBranchId === branch.id ? "جارٍ الحفظ" : "حفظ المسمى"}</button></div><div className="account-card-actions"><ConfirmButton confirmText="حذف الفرع؟ لن يتم حذف التكليفات القديمة تلقائيًا." onConfirm={() => removeAccount(branch.id)}><Trash size={17} />حذف</ConfirmButton></div></article>; })}</div>}
     </section>
 
-    <section className="panel"><div className="panel-head"><div><h2>المناديب</h2><p>يمكن تعديل الفرع ونوع المندوب في أي وقت. المندوب الموقوف لا يدخل في تكليفات جديدة حتى لو كان موجودًا داخل فترة نشر.</p></div></div>{!agents.length ? <EmptyState title="لا يوجد مناديب" text="أضف المناديب من النموذج أعلى الصفحة." /> : <div className="table-scroll"><table><thead><tr><th>المندوب</th><th>الجوال</th><th>الفرع</th><th>النوع</th><th>تكليفات مفتوحة</th><th>الحالة</th><th></th></tr></thead><tbody>{agents.map((agent) => <tr key={agent.id} className={agent.active ? "" : "disabled-row"}><td><strong>{agent.name}</strong></td><td className="ltr-cell">{agent.phone}</td><td><select className="inline-select" value={agent.accountId || ""} onChange={(e) => void updateAgent(agent.id, { accountId: e.target.value })}><option value="">غير محدد</option>{accounts.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></td><td><select className="inline-select agent-type-select" value={agent.agentType || "cash"} onChange={(e) => void updateAgent(agent.id, { agentType: e.target.value as AgentType })}><option value="cash">كاش</option><option value="installment">تقسيط</option></select></td><td>{activeAdCountAgent(agent.id)}</td><td><label className="switch-label tiny"><input type="checkbox" checked={agent.active} onChange={(e) => void updateAgent(agent.id, { active: e.target.checked })} /><span>{agent.active ? "نشط" : "إجازة / موقوف"}</span></label></td><td><ConfirmButton className="icon-danger" confirmText="حذف المندوب؟" onConfirm={() => removeAgent(agent.id)}><Trash size={16} /></ConfirmButton></td></tr>)}</tbody></table></div>}
+    <section className="panel"><div className="panel-head"><div><h2>المناديب</h2><p>يمكن تعديل الفرع ونوع المندوب في أي وقت. المندوب الموقوف لا يدخل في تكليفات جديدة. كل المندوبين النشطين المرتبطين بفروع نشطة يدخلون تلقائيًا في الدور.</p></div></div>{!agents.length ? <EmptyState title="لا يوجد مناديب" text="أضف المناديب من النموذج أعلى الصفحة." /> : <div className="table-scroll"><table><thead><tr><th>المندوب</th><th>الجوال</th><th>الفرع</th><th>النوع</th><th>تكليفات مفتوحة</th><th>الحالة</th><th></th></tr></thead><tbody>{agents.map((agent) => <tr key={agent.id} className={agent.active ? "" : "disabled-row"}><td><strong>{agent.name}</strong></td><td className="ltr-cell">{agent.phone}</td><td><select className="inline-select" value={agent.accountId || ""} onChange={(e) => void updateAgent(agent.id, { accountId: e.target.value })}><option value="">غير محدد</option>{accounts.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></td><td><select className="inline-select agent-type-select" value={agent.agentType || "cash"} onChange={(e) => void updateAgent(agent.id, { agentType: e.target.value as AgentType })}><option value="cash">كاش</option><option value="installment">تقسيط</option></select></td><td>{activeAdCountAgent(agent.id)}</td><td><label className="switch-label tiny"><input type="checkbox" checked={agent.active} onChange={(e) => void updateAgent(agent.id, { active: e.target.checked })} /><span>{agent.active ? "نشط" : "إجازة / موقوف"}</span></label></td><td><ConfirmButton className="icon-danger" confirmText="حذف المندوب؟" onConfirm={() => removeAgent(agent.id)}><Trash size={16} /></ConfirmButton></td></tr>)}</tbody></table></div>}
     </section>
   </>;
 }

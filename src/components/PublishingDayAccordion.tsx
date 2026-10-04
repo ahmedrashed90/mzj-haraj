@@ -110,7 +110,7 @@ export function PublishingDayAccordion({
   const [previewId, setPreviewId] = useState("");
   const branchById = useMemo(() => new Map(branches.map((branch) => [branch.id, branch])), [branches]);
   const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
-  const sortedAds = useMemo(() => [...ads].sort((a, b) => Number(a.publishingPeriodOrder || 0) - Number(b.publishingPeriodOrder || 0) || Number(a.periodAgentSequence || 0) - Number(b.periodAgentSequence || 0) || Number(a.scheduleOrder || 0) - Number(b.scheduleOrder || 0)), [ads]);
+  const sortedAds = useMemo(() => [...ads].sort((a, b) => Number(a.scheduleOrder || 0) - Number(b.scheduleOrder || 0) || Number(a.agentSequence || a.periodAgentSequence || 0) - Number(b.agentSequence || b.periodAgentSequence || 0)), [ads]);
   const publishedCount = sortedAds.filter(isPublished).length;
   const lateCount = sortedAds.filter((ad) => isOverdue(ad)).length;
 
@@ -126,16 +126,13 @@ export function PublishingDayAccordion({
     </button>
 
     {open ? <div className="publishing-day-body">
-      {!sortedAds.length ? <div className="publishing-day-empty">لا توجد إعلانات في هذا اليوم.</div> : <div className="professional-table-scroll"><table className="publishing-table"><thead><tr><th>#</th><th>وقت النشر</th><th>الفترة</th><th>السيارة</th><th>الاسم / الفرع</th><th>النوع</th><th>عنوان الإعلان</th><th>الحالة</th><th>إجراءات</th></tr></thead><tbody>{sortedAds.flatMap((ad, index) => {
+      {!sortedAds.length ? <div className="publishing-day-empty">لا توجد إعلانات في هذا اليوم.</div> : <div className="professional-table-scroll"><table className="publishing-table"><thead><tr><th>#</th><th>السيارة</th><th>المندوب / الفرع</th><th>النوع</th><th>عنوان الإعلان</th><th>الحالة</th><th>إجراءات</th></tr></thead><tbody>{sortedAds.flatMap((ad, index) => {
         const agent = agentById.get(ad.agentId);
         const branch = branchById.get(adBranchId(ad));
         const previewOpen = previewId === ad.id;
         const late = isOverdue(ad);
-        const timeText = ad.publishingPeriodStart && ad.publishingPeriodEnd ? `${ad.publishingPeriodStart} - ${ad.publishingPeriodEnd}` : "—";
         const rows = [<tr className={`${late ? "publishing-row-late" : ""} ${isPublished(ad) ? "publishing-row-done" : ""}`} key={ad.id}>
           <td className="row-number">{index + 1}</td>
-          <td><strong className="ltr-value schedule-time-value">{timeText}</strong></td>
-          <td><span className="period-pill">{ad.publishingPeriodName || "بدون فترة"}</span></td>
           <td><div className="vehicle-cell"><strong>{ad.carName}</strong><small>{[ad.statement, ad.modelYear].filter(Boolean).join(" · ")}</small></div></td>
           <td><div className="agent-cell"><strong>{agent?.name || ad.agentNameSnapshot || "محذوف"}</strong><small>{branch?.name || "بدون فرع"}</small></div></td>
           <td><span className={`agent-type-pill ${ad.agentTypeSnapshot === "installment" ? "installment" : "cash"}`}>{ad.agentTypeSnapshot === "installment" ? "تقسيط" : "كاش"}</span></td>
@@ -143,7 +140,7 @@ export function PublishingDayAccordion({
           <td><select className={`status-select table-status ${ad.status}`} value={ad.status} onChange={(e) => void updateAd(ad.id, { status: e.target.value as AdStatus })}>{statuses.map((status) => <option key={status} value={status}>{AD_STATUS_LABELS[status]}</option>)}</select></td>
           <td><div className="day-row-action-stack"><div className="day-row-action-line"><CopyButtons ad={ad} onPreview={() => setPreviewId((current) => current === ad.id ? "" : ad.id)} />{allowDelete ? <ConfirmButton className="table-delete-button" confirmText="حذف التكليف؟" onConfirm={() => removeAd(ad.id)}><Trash size={15} /></ConfirmButton> : null}</div><PublishLinkEditor ad={ad} showNotes={showNotes} /></div></td>
         </tr>];
-        if (previewOpen) rows.push(<tr className="publishing-preview-row" key={`${ad.id}-preview`}><td colSpan={9}><div className="publishing-preview-panel"><div><span>عنوان إعلان حراج</span><strong>{ad.adTitle || "—"}</strong><small>{ad.agentTypeSnapshot === "installment" ? "عنوان تمويل" : "عنوان كاش"} · {ad.harajAccountName || publishingSettings.accountName || "حساب حراج غير محدد"}</small></div><pre>{getPublishingAdText(ad) || "صيغة الإعلان غير جاهزة."}</pre>{ad.websitePermalink ? <a href={ad.websitePermalink} target="_blank" rel="noreferrer"><ArrowSquareOut size={15} />فتح صفحة السيارة بالموقع</a> : null}</div></td></tr>);
+        if (previewOpen) rows.push(<tr className="publishing-preview-row" key={`${ad.id}-preview`}><td colSpan={7}><div className="publishing-preview-panel"><div><span>عنوان إعلان حراج</span><strong>{ad.adTitle || "—"}</strong><small>{ad.agentTypeSnapshot === "installment" ? "عنوان تمويل" : "عنوان كاش"} · {ad.harajAccountName || publishingSettings.accountName || "حساب حراج غير محدد"}</small></div><pre>{getPublishingAdText(ad) || "صيغة الإعلان غير جاهزة."}</pre>{ad.websitePermalink ? <a href={ad.websitePermalink} target="_blank" rel="noreferrer"><ArrowSquareOut size={15} />فتح صفحة السيارة بالموقع</a> : null}</div></td></tr>);
         return rows;
       })}</tbody></table></div>}
     </div> : null}

@@ -34,7 +34,7 @@ export function AdsPage() {
       if (!needle) return true;
       const bag = `${ad.carName} ${ad.statement} ${ad.modelYear} ${ad.adTitle || ""} ${ad.adText || ""} ${branchById.get(adBranchId(ad))?.name || ""} ${agentById.get(ad.agentId)?.name || ""}`.toLowerCase();
       return bag.includes(needle);
-    }).sort((a, b) => String(a.scheduledDate || "").localeCompare(String(b.scheduledDate || "")) || Number(a.publishingPeriodOrder || 0) - Number(b.publishingPeriodOrder || 0) || Number(a.periodAgentSequence || 0) - Number(b.periodAgentSequence || 0));
+    }).sort((a, b) => String(a.scheduledDate || "").localeCompare(String(b.scheduledDate || "")) || Number(a.scheduleOrder || 0) - Number(b.scheduleOrder || 0) || Number(a.agentSequence || a.periodAgentSequence || 0) - Number(b.agentSequence || b.periodAgentSequence || 0));
   }, [ads, status, branchId, agentId, urlFilter, specs, weekFilter, search, currentWeek, branchById, agentById]);
 
   const groups = useMemo(() => {
@@ -65,7 +65,7 @@ export function AdsPage() {
     <section className="ads-filter-panel panel">
       <label className="search-box ads-search"><MagnifyingGlass size={19} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="بحث بالسيارة أو الاسم أو عنوان الإعلان" /></label>
       <div className="ads-filter-selects">
-        <select value={weekFilter} onChange={(e) => setWeekFilter(e.target.value as typeof weekFilter)}><option value="all">كل الفترات</option><option value="current">الفترة الحالية</option></select>
+        <select value={weekFilter} onChange={(e) => setWeekFilter(e.target.value as typeof weekFilter)}><option value="all">كل الجداول</option><option value="current">الجدول الحالي</option></select>
         <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)}><option value="all">كل الحالات</option>{statuses.map((item) => <option key={item} value={item}>{AD_STATUS_LABELS[item]}</option>)}</select>
         <select value={branchId} onChange={(e) => setBranchId(e.target.value)}><option value="all">كل الفروع</option>{accounts.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select>
         <select value={agentId} onChange={(e) => setAgentId(e.target.value)}><option value="all">كل المناديب</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select>

@@ -1,63 +1,46 @@
-MZJ Haraj Manager v1.14.0 CLEAN
+MZJ Haraj Manager v1.15.0 CLEAN
 
-CORE RULES
+CORE PUBLISHING MODEL
 - One actual Haraj account and one company daily limit.
 - The account daily limit is the only source of ad quantity.
-- Every publishing period has: name, start/end time, ordered agentIds, active state.
-- Periods do not have an independent quota and do not change the daily ad count.
-- Assignment follows each period rep order continuously across days; branch still comes from the assigned rep.
-- Reps can be cash or installment.
-- No vehicle repeats inside the same coverage cycle; after all eligible cars are covered, a new cycle starts.
-- Cars without complete CompareKey are excluded from scheduling.
-- Agency-location stock remains excluded.
+- Publishing periods were removed from runtime, UI, validation, scheduling and exports.
+- All eligible active reps share one continuous global round-robin queue.
+- Eligible assignment rep = active rep linked to an active branch.
+- Queue continues across days and resumes after the last rep found in existing assignments.
+- Example with 14 reps and 4 ads/day: 1-4, 5-8, 9-12, 13-14-1-2, 3-6, 7-10.
+- Rep branch follows the assigned rep automatically.
 
-V1.13.0 CONTACT ROTATION
-- Every newly generated ad contains ALL agents whose active flag is enabled.
+CONTACT ROTATION
+- Every generated ad contains ALL active reps as contact snapshots.
 - Each contact snapshot contains agentId, name and phone.
-- The contact list is rotated by one position for every next ad.
-- Example: A/B/C -> B/C/A -> C/A/B -> repeat.
-- Missing name or phone for any active agent blocks schedule creation.
-- Assigned rep remains the publishing owner; contact rotation does not change assignment logic.
+- Contact order rotates by one position for every next ad.
+- Missing name or phone for any active rep blocks schedule creation.
 
-V1.13.0 AUTOMATIC WINDOW
+AUTOMATIC WINDOW
 - Automatic schedule starts on the same calendar day the button is pressed.
 - Automatic schedule ends on the coming Friday, inclusive.
-- Pressing the button on Friday creates a Friday-only window.
-- Manual selected-row scheduling keeps its previous suggested-window behavior.
+- Pressing on Friday creates a Friday-only window.
+- Automatic quantity = dailyLimit * days minus already scheduled open ads in those days.
 
-V1.13.0 WORD EXPORT
-- PDF export was removed from the Schedule page.
+VEHICLE COVERAGE
+- No vehicle repeats inside the same coverage cycle.
+- After all eligible vehicles are covered, a new cycle starts automatically.
+- Cars without complete CompareKey are excluded.
+- Agency-location stock remains excluded.
+
+WORD EXPORT
+- PDF export is removed.
 - Each branch exports a real DOCX file generated in-browser.
-- DOCX includes summary, day tables, assigned rep/type/vehicle/link status, and publishing policies.
-- DOCX is RTL and does not depend on print dialogs or external packages.
-
-AD COPY / COMPAREKEY
-- Interior specs: CompareKey only.
-- Exterior specs: CompareKey only.
-- Safety specs: CompareKey only.
-- Description contains all active rep names and phones in the per-ad rotated order.
-- Description ends with tax-inclusive website price and the approved discount/gifts line.
+- DOCX does not include publishing-period or publishing-time columns.
+- DOCX includes day tables, assigned rep/type/vehicle/link status, and publishing policies.
 
 FIRESTORE
 - settings/haraj_publishing
 - haraj_accounts
-- agents (includes agentType)
-- publishing_periods
-- haraj_ads (includes contactAgentsSnapshot for new ads)
+- agents
+- haraj_ads
+- legacy publishing_periods collection is no longer read or used by v1.15.0.
 
 WORDPRESS BRIDGE
 - MZJ Haraj Ad Data Bridge v1.1.0
 - Read-only endpoint /wp-json/mzj-haraj/v1/cars
-
-V1.13.0 DAILY LIMIT / PERIODS
-- Daily limit is fixed per publishing day and is no longer required to equal the sum of publishing-period counts.
-- Publishing periods are time/rep-order slots only.
-- Automatic schedule quantity = dailyLimit * days in the active plan window minus already scheduled open ads in that window.
-
-
-V1.14.0 CONTINUOUS REP ROTATION
-- Daily limit remains the only source of ad quantity.
-- Publishing periods provide timing only; their cursor continues across days.
-- Each period's ordered rep cursor continues across days/weeks instead of restarting at rep #1 every day.
-- Existing assignments seed the next cursor position.
-- Example: 14 reps + 4 ads/day => 1-4, 5-8, 9-12, 13-14-1-2.

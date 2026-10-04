@@ -19,7 +19,7 @@ export function SchedulePage() {
   const today = dateKey(new Date());
 
   const branchById = useMemo(() => new Map(accounts.map((branch) => [branch.id, branch])), [accounts]);
-  const weekAds = useMemo(() => ads.filter((ad) => ad.weekStart === weekStart).sort((a, b) => String(a.scheduledDate || "").localeCompare(String(b.scheduledDate || "")) || Number(a.publishingPeriodOrder || 0) - Number(b.publishingPeriodOrder || 0) || Number(a.periodAgentSequence || 0) - Number(b.periodAgentSequence || 0) || Number(a.scheduleOrder || 0) - Number(b.scheduleOrder || 0)), [ads, weekStart]);
+  const weekAds = useMemo(() => ads.filter((ad) => ad.weekStart === weekStart).sort((a, b) => String(a.scheduledDate || "").localeCompare(String(b.scheduledDate || "")) || Number(a.scheduleOrder || 0) - Number(b.scheduleOrder || 0) || Number(a.agentSequence || a.periodAgentSequence || 0) - Number(b.agentSequence || b.periodAgentSequence || 0)), [ads, weekStart]);
   const { planStart, planEnd } = getPlanWindowFromAds(weekAds, weekStart);
   const days = getPlanDays(planStart, planEnd);
   const published = weekAds.filter(isPublished).length;
@@ -86,7 +86,7 @@ export function SchedulePage() {
     <section className="schedule-overview">
       <article className="schedule-overview-card featured"><div className="overview-icon"><ClipboardText size={24} weight="duotone" /></div><div><span>إجمالي إعلانات الجدول</span><strong>{weekAds.length}</strong><small>{formatPlanRange(planStart, planEnd)}</small></div></article>
       <article className="schedule-overview-card"><div className="overview-icon"><CalendarBlank size={24} weight="duotone" /></div><div><span>الحد اليومي للحساب</span><strong>{publishingSettings.dailyLimit || 0}</strong><small>{days.length} أيام نشر</small></div></article>
-      <article className="schedule-overview-card"><div className="overview-icon"><UsersThree size={24} weight="duotone" /></div><div><span>المناديب النشطون</span><strong>{activeAgents}</strong><small>موزعون حسب فترات النشر</small></div></article>
+      <article className="schedule-overview-card"><div className="overview-icon"><UsersThree size={24} weight="duotone" /></div><div><span>المناديب النشطون</span><strong>{activeAgents}</strong><small>موزعون تلقائيًا بالتتابع</small></div></article>
       <article className="schedule-overview-card"><div className="overview-icon"><Storefront size={24} weight="duotone" /></div><div><span>الفروع النشطة</span><strong>{activeBranches}</strong><small>{published} إعلان تم نشره</small></div></article>
     </section>
 
@@ -96,7 +96,7 @@ export function SchedulePage() {
       {weekAds.length ? <ConfirmButton className="danger-button schedule-delete-button" confirmText={`حذف جدول النشر بالكامل (${weekAds.length} تكليف)؟`} onConfirm={deleteWholeSchedule}><Trash size={17} />{deleting ? "جارٍ الحذف..." : "حذف الجدول"}</ConfirmButton> : null}
     </section>
 
-    {!weekAds.length ? <section className="panel"><EmptyState title="لا يوجد جدول لهذه الفترة" text="جهز جدولًا جديدًا من مخزون السيارات." /></section> : <section className="publishing-days-list">{days.map((day) => {
+    {!weekAds.length ? <section className="panel"><EmptyState title="لا يوجد جدول لهذا النطاق" text="جهز جدولًا جديدًا من مخزون السيارات." /></section> : <section className="publishing-days-list">{days.map((day) => {
       const dayAds = weekAds.filter((ad) => ad.scheduledDate === day.key);
       return <PublishingDayAccordion
         key={day.key}

@@ -104,17 +104,14 @@ function buildDocumentXml(args: {
     parts.push(pageBreak());
     const rows = ads
       .filter((ad) => ad.scheduledDate === day.key)
-      .sort((a, b) => Number(a.publishingPeriodOrder || 0) - Number(b.publishingPeriodOrder || 0)
-        || Number(a.periodAgentSequence || 0) - Number(b.periodAgentSequence || 0)
-        || Number(a.scheduleOrder || 0) - Number(b.scheduleOrder || 0));
+      .sort((a, b) => Number(a.scheduleOrder || 0) - Number(b.scheduleOrder || 0)
+        || Number(a.agentSequence || a.periodAgentSequence || 0) - Number(b.agentSequence || b.periodAgentSequence || 0));
     parts.push(paragraph(`${day.name} - ${formatDateArabic(day.key, { day: "numeric", month: "long", year: "numeric" })}`, { bold: true, size: 28, after: 80 }));
     parts.push(paragraph(`إعلانات اليوم: ${rows.length}`, { bold: true, size: 21, after: 120 }));
     parts.push(table(
-      ["#", "وقت النشر", "الفترة", "المندوب", "النوع", "السيارة / البيان", "الموديل", "رابط الإعلان"],
+      ["#", "المندوب", "النوع", "السيارة / البيان", "الموديل", "رابط الإعلان"],
       rows.map((ad, index) => [
         String(index + 1),
-        ad.publishingPeriodStart && ad.publishingPeriodEnd ? `${ad.publishingPeriodStart} - ${ad.publishingPeriodEnd}` : "—",
-        ad.publishingPeriodName || "—",
         agentById.get(ad.agentId)?.name || ad.agentNameSnapshot || "—",
         ad.agentTypeSnapshot === "installment" ? "تقسيط" : "كاش",
         [ad.carName, ad.statement].filter(Boolean).join(" - "),

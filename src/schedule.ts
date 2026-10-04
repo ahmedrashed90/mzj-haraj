@@ -1,4 +1,4 @@
-import type { Agent, HarajAccount, HarajAd, PublishingPeriod, PublishingSettings, StockGroup } from "./types";
+import type { Agent, HarajAccount, HarajAd, PublishingSettings, StockGroup } from "./types";
 import { getBranchAdvertiserName } from "./branch-advertiser";
 
 const DAY_NAME_BY_JS_INDEX = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"] as const;
@@ -58,11 +58,6 @@ export function formatDateArabic(value: string, options?: Intl.DateTimeFormatOpt
 }
 export function formatWeekRange(weekStart: string) { return `${formatDateArabic(weekStart, { day: "numeric", month: "short" })} - ${formatDateArabic(getWeekEndKey(weekStart), { day: "numeric", month: "short", year: "numeric" })}`; }
 export function formatPlanRange(planStart: string, planEnd: string) { return `من ${formatDateArabic(planStart, { weekday: "long", day: "numeric", month: "short", year: "numeric" })} إلى ${formatDateArabic(planEnd, { weekday: "long", day: "numeric", month: "short", year: "numeric" })}`; }
-export function formatPublishingPeriod(period: Pick<PublishingPeriod, "name" | "startTime" | "endTime">) {
-  const time = [period.startTime, period.endTime].filter(Boolean).join(" - ");
-  return time ? `${period.name} · ${time}` : period.name;
-}
-
 function countsForCoverage(ad: HarajAd) { return ad.status !== "closed" || Boolean(String(ad.url || "").trim() || ad.publishedAt); }
 export function getCoverageCycle(ad: HarajAd) { return Number(ad.coverageCycle || 1); }
 export function currentCoverageCycle(ads: HarajAd[]) { const relevant = ads.filter(countsForCoverage); return Math.max(1, ...relevant.map(getCoverageCycle)); }
@@ -98,31 +93,17 @@ export function getPlanWindowFromAds(weekAds: HarajAd[], weekStart: string) {
   return { planStart: starts[0] || weekStart, planEnd: ends[ends.length - 1] || getWeekEndKey(weekStart) };
 }
 
-export function activePublishingPeriods(periods: PublishingPeriod[]) {
-  return periods
-    .filter((period) => period.active !== false)
-    .sort((a, b) => String(a.startTime || "").localeCompare(String(b.startTime || "")) || Number(a.sortOrder || 0) - Number(b.sortOrder || 0) || a.name.localeCompare(b.name, "ar"));
+export function getEligiblePublishingAgents(agents: Agent[], branches: HarajAccount[]) {
+  const activeBranchIds = new Set(branches.filter((branch) => branch.active !== false).map((branch) => branch.id));
+  return agents
+    .filter((agent) => isAgentAvailable(agent, activeBranchIds))
+    .sort((a, b) => a.name.localeCompare(b.name, "ar") || a.id.localeCompare(b.id));
 }
 
-function orderedActiveContactAgents(periods: PublishingPeriod[], agents: Agent[]) {
-  const available = agents.filter((agent) => Boolean(agent.active));
-  const availableById = new Map(available.map((agent) => [agent.id, agent]));
-  const seen = new Set<string>();
-  const ordered: Agent[] = [];
-  activePublishingPeriods(periods).forEach((period) => {
-    period.agentIds.forEach((id) => {
-      const agent = availableById.get(id);
-      if (!agent || seen.has(agent.id)) return;
-      seen.add(agent.id);
-      ordered.push(agent);
-    });
-  });
-  available.forEach((agent) => {
-    if (seen.has(agent.id)) return;
-    seen.add(agent.id);
-    ordered.push(agent);
-  });
-  return ordered;
+export function getActiveContactAgents(agents: Agent[]) {
+  return agents
+    .filter((agent) => Boolean(agent.active))
+    .sort((a, b) => a.name.localeCompare(b.name, "ar") || a.id.localeCompare(b.id));
 }
 
 function rotateAgents<T>(rows: T[], offset: number) {
@@ -131,25 +112,14 @@ function rotateAgents<T>(rows: T[], offset: number) {
   return [...rows.slice(normalized), ...rows.slice(0, normalized)];
 }
 
-export function validatePublishingPeriods(periods: PublishingPeriod[], settings: PublishingSettings, agents: Agent[], branches: HarajAccount[]) {
+export function validatePublishingSetup(settings: PublishingSettings, agents: Agent[], branches: HarajAccount[]) {
   const dailyLimit = Math.max(0, Math.floor(Number(settings.dailyLimit || 0)));
-  const active = activePublishingPeriods(periods);
-  if (!active.length) return "أضف فترة نشر نشطة واحدة على الأقل من إعداد النشر والمناديب.";
   if (!dailyLimit) return "حد حساب حراج اليومي يجب أن يكون أكبر من صفر.";
-  for (const period of active) {
-    if (!String(period.name || "").trim()) return "يوجد فترة نشر بدون اسم.";
-    if (!period.startTime || !period.endTime || period.startTime >= period.endTime) return `راجع وقت البداية والنهاية لفترة «${period.name}».`;
-  }
-
-  const activeBranchIds = new Set(branches.filter((branch) => branch.active !== false).map((branch) => branch.id));
-  const agentById = new Map(agents.map((agent) => [agent.id, agent]));
-  for (const period of active) {
-    const available = period.agentIds.map((id) => agentById.get(id)).filter((agent): agent is Agent => Boolean(agent && isAgentAvailable(agent, activeBranchIds)));
-    if (!available.length) return `فترة «${period.name}» لا تحتوي على مندوب نشط داخل فرع نشط.`;
-  }
-  const activeContacts = orderedActiveContactAgents(periods, agents);
-  if (!activeContacts.length) return "لا يوجد مندوب نشط ببيانات تواصل صالحة لإضافتها داخل الإعلانات.";
-  const missingContact = activeContacts.filter((agent) => !String(agent.name || "").trim() || !String(agent.phone || "").trim());
+  const eligibleAgents = getEligiblePublishingAgents(agents, branches);
+  if (!eligibleAgents.length) return "لا يوجد مندوب نشط مرتبط بفرع نشط لتوزيع الإعلانات عليه.";
+  const contactAgents = getActiveContactAgents(agents);
+  if (!contactAgents.length) return "لا يوجد مندوب نشط ببيانات تواصل صالحة لإضافتها داخل الإعلانات.";
+  const missingContact = contactAgents.filter((agent) => !String(agent.name || "").trim() || !String(agent.phone || "").trim());
   if (missingContact.length) return `بيانات التواصل ناقصة للمناديب النشطين: ${missingContact.map((agent) => agent.name || agent.id).join("، ")}.`;
   return "";
 }
@@ -160,7 +130,6 @@ type BuildInput = {
   planEnd: string;
   coverageCycle: number;
   settings: PublishingSettings;
-  periods: PublishingPeriod[];
   branches: HarajAccount[];
   agents: Agent[];
   existingAds: HarajAd[];
@@ -170,9 +139,8 @@ type BuildInput = {
 type VehicleTarget = { vehicle: StockGroup; coverageCycle: number };
 type PublishingSlot = {
   day: ReturnType<typeof getPlanDays>[number];
-  period: PublishingPeriod;
   agent: Agent;
-  periodAgentSequence: number;
+  agentSequence: number;
 };
 
 function buildVehicleTargets(vehicles: StockGroup[], existingAds: HarajAd[], startCycle: number, requested: number): VehicleTarget[] {
@@ -204,18 +172,17 @@ function buildVehicleTargets(vehicles: StockGroup[], existingAds: HarajAd[], sta
 }
 
 /**
- * Publishing model v1.14:
+ * Publishing model v1.15:
  * - One Haraj account owns the company daily publishing limit.
  * - That daily limit is the only source of ad quantity: N ads/day means N ads on every publishing day.
- * - Publishing periods define timing and rep order only; they never add an independent ad quota.
- * - The period cursor is continuous across days, so an extra slot is not always given to the first period.
- * - Every period has its own ordered rep list, and its rep cursor is continuous across days/weeks.
+ * - There are no publishing periods and no period-based rep groups.
+ * - Every new assignment uses one global round-robin queue containing every active rep linked to an active branch.
+ * - The queue continues across days and from the last rep used in existing assignments instead of restarting each morning.
  *   Example: 14 reps + 4 ads/day => day 1 uses reps 1-4, day 2 uses 5-8, then 9-12, then 13-14-1-2.
- * - Existing assignments seed the cursors, so generating the remaining capacity continues from the last used period/rep instead of restarting.
- * - The rep's branch is inherited automatically from the rep record; branches do not receive an automatic quota.
+ * - Every ad still contains all active reps in its contact block, with the visible contact order rotated from ad to ad.
  * - A vehicle is never repeated inside the same coverage cycle. After all eligible cars are used, a new cycle starts so the daily limit can keep being filled.
  */
-export function buildPublishingAssignments({ vehicles, planStart, planEnd, coverageCycle, settings, periods, branches, agents, existingAds, requestedCount }: BuildInput) {
+export function buildPublishingAssignments({ vehicles, planStart, planEnd, coverageCycle, settings, branches, agents, existingAds, requestedCount }: BuildInput) {
   const days = getPlanDays(planStart, planEnd);
   if (!days.length) throw new Error("فترة جدول النشر غير صحيحة.");
   const accountName = String(settings.accountName || "").trim();
@@ -223,21 +190,11 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
   if (!accountName) throw new Error("اكتب اسم حساب حراج المستخدم حاليًا من صفحة إعداد النشر والمناديب.");
   if (!dailyLimit) throw new Error("حد حساب حراج اليومي يجب أن يكون أكبر من صفر.");
 
-  const periodsIssue = validatePublishingPeriods(periods, settings, agents, branches);
-  if (periodsIssue) throw new Error(periodsIssue);
-  const orderedPeriods = activePublishingPeriods(periods);
-  const periodOrderById = new Map(orderedPeriods.map((period, index) => [period.id, index + 1]));
-  const activeBranchIds = new Set(branches.filter((branch) => branch.active !== false).map((branch) => branch.id));
+  const setupIssue = validatePublishingSetup(settings, agents, branches);
+  if (setupIssue) throw new Error(setupIssue);
+  const eligibleAgents = getEligiblePublishingAgents(agents, branches);
+  const contactAgents = getActiveContactAgents(agents);
   const branchById = new Map(branches.map((branch) => [branch.id, branch]));
-  const agentById = new Map(agents.map((agent) => [agent.id, agent]));
-  const periodAgents = new Map<string, Agent[]>();
-  orderedPeriods.forEach((period) => {
-    periodAgents.set(period.id, period.agentIds
-      .map((id) => agentById.get(id))
-      .filter((agent): agent is Agent => Boolean(agent && isAgentAvailable(agent, activeBranchIds))));
-  });
-  const contactAgents = orderedActiveContactAgents(periods, agents);
-  if (!contactAgents.length) throw new Error("لا يوجد مندوب نشط لإضافته داخل بيانات التواصل في الإعلان.");
 
   const uniqueVehicleMap = new Map<string, StockGroup>();
   vehicles.forEach((row) => { if (row?.key && !uniqueVehicleMap.has(row.key)) uniqueVehicleMap.set(row.key, row); });
@@ -253,17 +210,16 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
   const vehicleTargets = buildVehicleTargets(uniqueVehicles, existingAds, coverageCycle, requested);
   if (vehicleTargets.length !== requested) throw new Error("تعذر تجهيز دورة تغطية السيارات.");
 
+  const assignmentHistory = existingAds
+    .filter((ad) => ad.status !== "closed" && Boolean(ad.agentId))
+    .sort((a, b) => String(a.scheduledDate || a.assignedAt || "").localeCompare(String(b.scheduledDate || b.assignedAt || "")) || Number(a.scheduleOrder || 0) - Number(b.scheduleOrder || 0));
+  const lastAssignedAgentId = assignmentHistory.length ? assignmentHistory[assignmentHistory.length - 1].agentId : "";
+  const lastAssignedIndex = eligibleAgents.findIndex((agent) => agent.id === lastAssignedAgentId);
+  let agentCursor = lastAssignedIndex >= 0 ? lastAssignedIndex + 1 : assignmentHistory.length % eligibleAgents.length;
+
   const slots: PublishingSlot[] = [];
   let stillNeeded = requested;
-
-  // Keep both the period cursor and every period's rep cursor continuous.
-  // This prevents every new day from restarting at period #1 / rep #1.
-  const assignmentHistory = existingAds.filter((ad) => Boolean(ad.publishingPeriodId));
-  let periodCursor = assignmentHistory.length;
-  const periodSequence = new Map<string, number>();
-  orderedPeriods.forEach((period) => {
-    periodSequence.set(period.id, assignmentHistory.filter((ad) => ad.publishingPeriodId === period.id).length);
-  });
+  let globalSequence = assignmentHistory.length;
 
   for (const day of days) {
     if (stillNeeded <= 0) break;
@@ -272,36 +228,25 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
     const dayToAdd = Math.min(stillNeeded, dayRemaining);
 
     for (let offset = 0; offset < dayToAdd; offset += 1) {
-      // Quantity comes only from dailyLimit. Periods only provide the publishing time.
-      // The cursor keeps moving across days so the next ad continues from where the
-      // previous ad stopped instead of starting from the first period every morning.
-      const period = orderedPeriods[periodCursor % orderedPeriods.length];
-      const agentsInPeriod = periodAgents.get(period.id) || [];
-      if (!agentsInPeriod.length) throw new Error(`فترة «${period.name}» لا يوجد بها مندوب متاح.`);
-      const sequence = periodSequence.get(period.id) || 0;
-      slots.push({
-        day,
-        period,
-        agent: agentsInPeriod[sequence % agentsInPeriod.length],
-        periodAgentSequence: sequence + 1,
-      });
-      periodSequence.set(period.id, sequence + 1);
-      periodCursor += 1;
+      const agent = eligibleAgents[agentCursor % eligibleAgents.length];
+      globalSequence += 1;
+      slots.push({ day, agent, agentSequence: globalSequence });
+      agentCursor += 1;
       stillNeeded -= 1;
     }
   }
-  if (slots.length !== requested) throw new Error("تعذر توزيع التكليفات على فترات النشر داخل الحد اليومي.");
+  if (slots.length !== requested) throw new Error("تعذر توزيع التكليفات على المناديب داخل الحد اليومي.");
 
   const weekStart = getWeekStartKey(planStart);
   const planId = `plan-${planStart}-${planEnd}-${Date.now()}`;
-  const existingRotationOffset = getPlanAds(existingAds, planStart, planEnd).length;
+  const existingRotationOffset = assignmentHistory.length;
 
   return vehicleTargets.map((target, index): PublishingAssignmentDraft => {
     const vehicle = target.vehicle;
     const slot = slots[index];
     const branchId = String(slot.agent.accountId || "");
     const branch = branchById.get(branchId);
-    if (!branch) throw new Error(`المندوب ${slot.agent.name} غير مرتبط بفرع نشط.`);
+    if (!branch || branch.active === false) throw new Error(`المندوب ${slot.agent.name} غير مرتبط بفرع نشط.`);
 
     return {
       vehicleKey: vehicle.key,
@@ -320,12 +265,7 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
         name: String(agent.name || "").trim(),
         phone: String(agent.phone || "").trim(),
       })),
-      publishingPeriodId: slot.period.id,
-      publishingPeriodName: slot.period.name,
-      publishingPeriodStart: slot.period.startTime,
-      publishingPeriodEnd: slot.period.endTime,
-      publishingPeriodOrder: periodOrderById.get(slot.period.id) || 0,
-      periodAgentSequence: slot.periodAgentSequence,
+      agentSequence: slot.agentSequence,
       harajAccountName: accountName,
       advertiserName: getBranchAdvertiserName(branch, accountName),
       status: "assigned",

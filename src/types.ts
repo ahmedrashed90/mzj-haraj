@@ -20,21 +20,6 @@ export type PublishingSettings = {
 
 export type AgentType = "cash" | "installment";
 
-export type PublishingPeriod = {
-  id: string;
-  name: string;
-  startTime: string;
-  endTime: string;
-  /** Legacy compatibility field. Ad quantity now comes only from PublishingSettings.dailyLimit. */
-  adCount: number;
-  /** Ordered rep ids. Their order is the publishing order inside this period. */
-  agentIds: string[];
-  active: boolean;
-  sortOrder: number;
-  createdAt?: string;
-  updatedAt?: string;
-};
-
 export type AgentContactSnapshot = {
   agentId: string;
   name: string;
@@ -48,7 +33,7 @@ export type Agent = {
   /** Controls the Haraj title template prepared for this rep. */
   agentType?: AgentType;
   active: boolean;
-  /** Internal branch id. Publishing periods choose the rep; the branch follows the rep. */
+  /** Internal branch id. The global round-robin chooses the rep; the branch follows the rep. */
   accountId?: string;
   branchName?: string;
   adLimit?: number;
@@ -77,7 +62,9 @@ export type HarajAd = {
   agentTypeSnapshot?: AgentType;
   /** All active reps frozen into the ad contact block, rotated per ad. */
   contactAgentsSnapshot?: AgentContactSnapshot[];
-  /** Frozen publishing-period data used when this assignment was created. */
+  /** Global round-robin sequence for the assigned rep. */
+  agentSequence?: number;
+  /** Legacy v1.14 fields kept only so old Firestore ads remain readable. New schedules do not use periods. */
   publishingPeriodId?: string;
   publishingPeriodName?: string;
   publishingPeriodStart?: string;
