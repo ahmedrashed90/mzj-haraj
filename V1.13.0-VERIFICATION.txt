@@ -1,4 +1,4 @@
-MZJ Haraj Manager v1.12.0 CLEAN - verification
+MZJ Haraj Manager v1.13.0 CLEAN - verification
 
 Implemented from the provided v1.11.0 source:
 1) Automatic schedule window
@@ -21,3 +21,17 @@ Implemented from the provided v1.11.0 source:
 
 4) TypeScript verification
    - types.ts, schedule.ts, ad-copy.ts, branch-advertiser.ts and word-export.ts compile successfully with tsc.
+
+
+V1.13.0 DAILY-LIMIT FIX
+- PublishingSettings.dailyLimit is the only ad quantity source.
+- Publishing-period adCount is ignored for scheduling and kept only for backward compatibility.
+- 3 ads/day across a full Saturday-Friday week = 21 ads.
+- Automatic plan still starts on the button-click day and ends on Friday, so Sunday-Friday at 3/day = 18 ads.
+- Active publishing periods control publishing time and rep order only.
+
+LOGIC CHECKS EXECUTED
+- dailyLimit=3, Saturday-Friday (7 days): 21 assignments, exactly 3 per day.
+- dailyLimit=3, Sunday-Friday (6 days): 18 assignments, exactly 3 per day.
+- dailyLimit=4, Sunday-Friday (6 days) with three legacy periods each adCount=5: 24 assignments, exactly 4 per day, no period-total validation error.
+- Modified TS/TSX files passed TypeScript transpile syntax diagnostics.

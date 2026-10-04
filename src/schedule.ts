@@ -100,11 +100,8 @@ export function getPlanWindowFromAds(weekAds: HarajAd[], weekStart: string) {
 
 export function activePublishingPeriods(periods: PublishingPeriod[]) {
   return periods
-    .filter((period) => period.active !== false && Math.max(0, Math.floor(Number(period.adCount || 0))) > 0)
+    .filter((period) => period.active !== false)
     .sort((a, b) => String(a.startTime || "").localeCompare(String(b.startTime || "")) || Number(a.sortOrder || 0) - Number(b.sortOrder || 0) || a.name.localeCompare(b.name, "ar"));
-}
-export function publishingPeriodsDailyTotal(periods: PublishingPeriod[]) {
-  return activePublishingPeriods(periods).reduce((sum, period) => sum + Math.max(0, Math.floor(Number(period.adCount || 0))), 0);
 }
 
 function orderedActiveContactAgents(periods: PublishingPeriod[], agents: Agent[]) {
@@ -138,8 +135,11 @@ export function validatePublishingPeriods(periods: PublishingPeriod[], settings:
   const dailyLimit = Math.max(0, Math.floor(Number(settings.dailyLimit || 0)));
   const active = activePublishingPeriods(periods);
   if (!active.length) return "أضف فترة نشر نشطة واحدة على الأقل من إعداد النشر والمناديب.";
-  const total = publishingPeriodsDailyTotal(periods);
-  if (total !== dailyLimit) return `مجموع إعلانات فترات النشر = ${total}، ويجب أن يساوي الحد اليومي لحساب حراج = ${dailyLimit}.`;
+  if (!dailyLimit) return "حد حساب حراج اليومي يجب أن يكون أكبر من صفر.";
+  for (const period of active) {
+    if (!String(period.name || "").trim()) return "يوجد فترة نشر بدون اسم.";
+    if (!period.startTime || !period.endTime || period.startTime >= period.endTime) return `راجع وقت البداية والنهاية لفترة «${period.name}».`;
+  }
 
   const activeBranchIds = new Set(branches.filter((branch) => branch.active !== false).map((branch) => branch.id));
   const agentById = new Map(agents.map((agent) => [agent.id, agent]));
@@ -204,12 +204,14 @@ function buildVehicleTargets(vehicles: StockGroup[], existingAds: HarajAd[], sta
 }
 
 /**
- * Publishing model v1.10:
+ * Publishing model v1.13:
  * - One Haraj account owns the company daily publishing limit.
- * - The daily limit is explicitly divided into publishing periods configured by the admin.
- * - Every period has its own ordered rep list. Assignment follows that order exactly and loops only when the period needs more ads than reps.
- * - The rep's branch is inherited automatically from the rep record; branches no longer receive an automatic proportional quota.
- * - A vehicle is never repeated inside the same coverage cycle. After all eligible cars are used, a new cycle starts so the configured periods can keep filling the daily limit.
+ * - That daily limit is the only source of ad quantity: N ads/day means N ads on every publishing day.
+ * - Publishing periods define timing and rep order only; they never add an independent ad quota.
+ * - Daily ads are assigned to active periods in chronological order and loop through the periods when needed.
+ * - Every period has its own ordered rep list. Assignment follows that order and loops when needed.
+ * - The rep's branch is inherited automatically from the rep record; branches do not receive an automatic quota.
+ * - A vehicle is never repeated inside the same coverage cycle. After all eligible cars are used, a new cycle starts so the daily limit can keep being filled.
  */
 export function buildPublishingAssignments({ vehicles, planStart, planEnd, coverageCycle, settings, periods, branches, agents, existingAds, requestedCount }: BuildInput) {
   const days = getPlanDays(planStart, planEnd);
@@ -255,33 +257,29 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
     if (stillNeeded <= 0) break;
     const dayRemaining = remainingByDay.get(day.key) || 0;
     if (dayRemaining <= 0) continue;
-    let dayToAdd = Math.min(stillNeeded, dayRemaining);
+    const dayToAdd = Math.min(stillNeeded, dayRemaining);
     const existingDay = existingAds.filter((ad) => ad.status !== "closed" && ad.scheduledDate === day.key);
+    const periodSequence = new Map<string, number>();
+    orderedPeriods.forEach((period) => {
+      periodSequence.set(period.id, existingDay.filter((ad) => ad.publishingPeriodId === period.id).length);
+    });
 
-    for (const period of orderedPeriods) {
-      if (dayToAdd <= 0) break;
+    for (let offset = 0; offset < dayToAdd; offset += 1) {
+      // Periods control publishing time only. The number of ads comes exclusively
+      // from the account daily limit, so we simply walk the periods in order.
+      const period = orderedPeriods[(existingDay.length + offset) % orderedPeriods.length];
       const agentsInPeriod = periodAgents.get(period.id) || [];
       if (!agentsInPeriod.length) throw new Error(`فترة «${period.name}» لا يوجد بها مندوب متاح.`);
-      const existingInPeriod = existingDay.filter((ad) => ad.publishingPeriodId === period.id).length;
-      const remainingInPeriod = Math.max(0, Math.floor(Number(period.adCount || 0)) - existingInPeriod);
-      const addForPeriod = Math.min(dayToAdd, remainingInPeriod);
-      for (let offset = 0; offset < addForPeriod; offset += 1) {
-        const sequence = existingInPeriod + offset;
-        slots.push({
-          day,
-          period,
-          agent: agentsInPeriod[sequence % agentsInPeriod.length],
-          periodAgentSequence: sequence + 1,
-        });
-      }
-      dayToAdd -= addForPeriod;
-      stillNeeded -= addForPeriod;
+      const sequence = periodSequence.get(period.id) || 0;
+      slots.push({
+        day,
+        period,
+        agent: agentsInPeriod[sequence % agentsInPeriod.length],
+        periodAgentSequence: sequence + 1,
+      });
+      periodSequence.set(period.id, sequence + 1);
+      stillNeeded -= 1;
     }
-
-    // Legacy assignments created before periods may already consume part of the
-    // daily limit. In that case the configured period quotas can leave no room
-    // for a mathematically perfect period split. We never exceed the daily limit.
-    if (dayToAdd > 0) throw new Error(`تعذر ملء ${day.name}: راجع التكليفات القديمة أو حصص فترات النشر لهذا اليوم.`);
   }
   if (slots.length !== requested) throw new Error("تعذر توزيع التكليفات على فترات النشر داخل الحد اليومي.");
 

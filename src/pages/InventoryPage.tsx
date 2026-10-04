@@ -154,7 +154,7 @@ export function InventoryPage() {
   const dailyPreview = useMemo(() => days.map((day) => {
     const dayRows = previewRows.filter((ad) => ad.scheduledDate === day.key);
     const periods = publishingPeriods
-      .filter((period) => period.active !== false && period.adCount > 0)
+      .filter((period) => period.active !== false)
       .sort((a, b) => a.startTime.localeCompare(b.startTime) || a.sortOrder - b.sortOrder)
       .map((period) => {
         const periodRows = dayRows
@@ -201,7 +201,7 @@ export function InventoryPage() {
   async function refreshAll() { await Promise.allSettled([refreshStock(), refreshWebsiteCars()]); }
 
   return <>
-    <PageTitle title="مخزون السيارات" subtitle="النظام يختار سيارات CompareKey بدون تكرار، ثم يوزع الحد اليومي حسب فترات النشر وترتيب المناديب المحدد لكل فترة." actions={<button className="secondary-button" onClick={() => void refreshAll()} disabled={stockLoading || websiteCarsLoading}><ArrowClockwise size={18} />{stockLoading || websiteCarsLoading ? "جارٍ التحديث" : "تحديث الاستوك والمواصفات"}</button>} />
+    <PageTitle title="مخزون السيارات" subtitle="النظام يختار سيارات CompareKey بدون تكرار. عدد الإعلانات ثابت حسب الحد اليومي، ثم تتوزع الإعلانات على فترات النشر وترتيب المناديب." actions={<button className="secondary-button" onClick={() => void refreshAll()} disabled={stockLoading || websiteCarsLoading}><ArrowClockwise size={18} />{stockLoading || websiteCarsLoading ? "جارٍ التحديث" : "تحديث الاستوك والمواصفات"}</button>} />
     {stockError ? <div className="alert warning"><WarningCircle size={19} />{stockError}</div> : null}
     {websiteCarsError ? <div className="alert warning"><WarningCircle size={19} />الاستوك يعمل، لكن ربط مواصفات الموقع غير متاح: {websiteCarsError}</div> : null}
     {error ? <div className="alert error"><WarningCircle size={19} />{error}</div> : null}
@@ -211,7 +211,7 @@ export function InventoryPage() {
     {coverageState.startedNewCycle && compareKeyReadyStock.length ? <div className="alert success"><CheckCircle size={19} />تمت تغطية السيارات المؤهلة بالكامل سابقًا، وبدأت دورة جديدة رقم {coverageState.cycle}.</div> : null}
 
     <section className="plan-window-hero">
-      <div className="plan-window-main"><div className="plan-window-icon"><CalendarBlank size={30} weight="duotone" /></div><div><span>الجدول التلقائي من اليوم حتى الجمعة</span><h2>{formatPlanRange(suggested.planStart, suggested.planEnd)}</h2><p>حساب حراج واحد: <b>{publishingSettings.accountName || "غير محدد"}</b>. يبدأ الجدول التلقائي من يوم الضغط على الزر ويستمر حتى الجمعة، مع الالتزام بفترات النشر وترتيب المناديب داخل كل فترة.</p></div></div>
+      <div className="plan-window-main"><div className="plan-window-icon"><CalendarBlank size={30} weight="duotone" /></div><div><span>الجدول التلقائي من اليوم حتى الجمعة</span><h2>{formatPlanRange(suggested.planStart, suggested.planEnd)}</h2><p>حساب حراج واحد: <b>{publishingSettings.accountName || "غير محدد"}</b>. يبدأ الجدول التلقائي من يوم الضغط على الزر ويستمر حتى الجمعة. كل يوم يأخذ نفس الحد اليومي، ثم توزع الإعلانات على فترات النشر بالتتابع.</p></div></div>
       <div className="plan-window-metrics"><div><span>أيام النشر</span><b>{suggestedDays}</b></div><div><span>حد الحساب اليومي</span><b>{dailyLimit}</b></div><div><span>سعة الفترة</span><b>{periodCapacity}</b></div><div><span>إعلانات الجدول التلقائي</span><b>{automaticTarget}</b></div></div>
       <button className="primary-button plan-window-action" onClick={openAutomatic} disabled={!automaticTarget || stockLoading}><CalendarBlank size={20} />تجهيز جدول تلقائي <b>{automaticTarget || ""}</b></button>
     </section>
@@ -240,11 +240,11 @@ export function InventoryPage() {
         {specsProblems.length ? <div className="comparekey-problems"><div className="comparekey-problems-head"><strong>السيارات التي تحتاج مراجعة CompareKey</strong><span>{specsProblems.length}</span></div>{specsProblems.map((ad) => <div className="comparekey-problem-row" key={`${ad.vehicleKey}-${ad.agentId}`}><div><b>{ad.carName}</b><span>{ad.statement} · {ad.modelYear}</span></div><div><code>{ad.websiteCompareKey || "بدون CompareKey"}</code><small>{ad.specsIssue || "غير جاهز"}</small></div></div>)}</div> : null}
 
         <div className="daily-distribution-preview">
-          <div className="daily-distribution-head"><h3>التوزيع اليومي حسب فترات النشر</h3><p>كل فترة تأخذ عدد الإعلانات المحدد لها، ثم يتم التكليف بالترتيب الذي حددته للمناديب داخل الفترة.</p></div>
+          <div className="daily-distribution-head"><h3>التوزيع اليومي حسب فترات النشر</h3><p>إجمالي كل يوم يساوي الحد اليومي للحساب. الفترات تحدد المواعيد فقط، ويتم المرور عليها بالتتابع ثم التكليف حسب ترتيب المناديب داخل كل فترة.</p></div>
           <div className="daily-distribution-branches">{dailyPreview.map(({ day, total, periods }) => <section className="daily-distribution-branch daily-by-branch" key={day.key}>
             <header><div><strong>{day.name}</strong><span>{day.key}</span></div><b>{total} / {dailyLimit} إعلان</b></header>
             <div className="branch-day-groups">{periods.length ? periods.map(({ period, rows }) => <div className="branch-day-group period-preview-group" key={period.id}>
-              <div className="branch-day-title"><div><strong>{period.name}</strong><span>{period.startTime} - {period.endTime}</span></div><b>{rows.length} / {period.adCount} إعلان</b></div>
+              <div className="branch-day-title"><div><strong>{period.name}</strong><span>{period.startTime} - {period.endTime}</span></div><b>{rows.length} إعلان</b></div>
               <div className="period-preview-agents">{rows.map(({ ad, agent, branch }) => <span key={`${ad.vehicleKey}-${ad.periodAgentSequence}`}><em>{ad.periodAgentSequence}</em><b>{agent?.name || ad.agentNameSnapshot || "—"}</b><small>{branch?.name || "بدون فرع"} · {ad.agentTypeSnapshot === "installment" ? "تقسيط" : "كاش"}</small></span>)}</div>
             </div>) : <div className="day-empty">لا توجد إعلانات في هذا اليوم</div>}</div>
           </section>)}</div>

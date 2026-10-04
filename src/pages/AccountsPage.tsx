@@ -13,7 +13,7 @@ import {
   updateAgent,
   updatePublishingPeriod,
 } from "../data";
-import { dateKey, publishingPeriodsDailyTotal } from "../schedule";
+import { dateKey } from "../schedule";
 import { defaultBranchAdvertiserName } from "../branch-advertiser";
 import type { Agent, AgentType, HarajAccount, PublishingPeriod } from "../types";
 import { ConfirmButton, EmptyState, PageTitle, StatCard } from "../components/Ui";
@@ -49,28 +49,25 @@ function PeriodEditor({ period, agents, accounts, onError, onNotice }: { period:
   const [name, setName] = useState(period.name);
   const [startTime, setStartTime] = useState(period.startTime);
   const [endTime, setEndTime] = useState(period.endTime);
-  const [adCount, setAdCount] = useState(String(period.adCount));
   const [agentIds, setAgentIds] = useState<string[]>(period.agentIds || []);
   const [active, setActive] = useState(period.active !== false);
   const [saving, setSaving] = useState(false);
-  useEffect(() => { setName(period.name); setStartTime(period.startTime); setEndTime(period.endTime); setAdCount(String(period.adCount)); setAgentIds(period.agentIds || []); setActive(period.active !== false); }, [period]);
+  useEffect(() => { setName(period.name); setStartTime(period.startTime); setEndTime(period.endTime); setAgentIds(period.agentIds || []); setActive(period.active !== false); }, [period]);
   async function save() {
     onError(""); onNotice("");
-    const count = Number(adCount);
     if (!name.trim()) return onError("اكتب اسم فترة النشر.");
     if (!startTime || !endTime || startTime >= endTime) return onError(`راجع وقت البداية والنهاية لفترة ${name || period.name}.`);
-    if (!Number.isInteger(count) || count < 1) return onError("عدد الإعلانات في الفترة يجب أن يكون رقمًا صحيحًا أكبر من صفر.");
     if (!agentIds.length) return onError(`اختر مندوبًا واحدًا على الأقل لفترة ${name}.`);
     setSaving(true);
     try {
-      await updatePublishingPeriod(period.id, { name: name.trim(), startTime, endTime, adCount: count, agentIds, active });
+      await updatePublishingPeriod(period.id, { name: name.trim(), startTime, endTime, agentIds, active });
       onNotice(`تم حفظ فترة ${name.trim()} وترتيب المناديب بداخلها.`);
     } catch (e) { onError(e instanceof Error ? e.message : "تعذر حفظ فترة النشر"); }
     finally { setSaving(false); }
   }
   return <article className={`publishing-period-card ${active ? "" : "disabled"}`}>
     <div className="period-card-head"><div><Clock size={20} /><div><strong>{period.name}</strong><span>{period.startTime} - {period.endTime}</span></div></div><label className="switch-label tiny"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /><span>{active ? "نشطة" : "موقوفة"}</span></label></div>
-    <div className="period-fields"><label>اسم الفترة<input value={name} onChange={(e) => setName(e.target.value)} /></label><label>من<input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} /></label><label>إلى<input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} /></label><label>إعلانات / يوم<input type="number" min="1" value={adCount} onChange={(e) => setAdCount(e.target.value)} /></label></div>
+    <div className="period-fields"><label>اسم الفترة<input value={name} onChange={(e) => setName(e.target.value)} /></label><label>من<input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} /></label><label>إلى<input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} /></label></div>
     <div className="period-order-head"><div><b>المناديب بالترتيب داخل الفترة</b><span>الإعلان الأول للرقم 1، ثم 2، ثم 3… وبعد آخر اسم يبدأ الترتيب من الأول عند الحاجة.</span></div></div>
     <AgentOrderPicker agentIds={agentIds} onChange={setAgentIds} agents={agents} accounts={accounts} />
     <div className="period-card-actions"><button type="button" className="secondary-button" onClick={() => void save()} disabled={saving}><FloppyDisk size={17} />{saving ? "جارٍ الحفظ" : "حفظ الفترة"}</button><ConfirmButton className="danger-button" confirmText={`حذف فترة ${period.name}؟`} onConfirm={() => removePublishingPeriod(period.id)}><Trash size={16} />حذف الفترة</ConfirmButton></div>
@@ -93,7 +90,6 @@ export function AccountsPage() {
   const [periodName, setPeriodName] = useState("");
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
-  const [periodCount, setPeriodCount] = useState("");
   const [periodAgentIds, setPeriodAgentIds] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -109,8 +105,8 @@ export function AccountsPage() {
   const unassignedActiveAgents = agents.filter((agent) => agent.active && (!agent.accountId || !activeBranchIds.has(agent.accountId))).length;
   const activeBranches = accounts.filter((branch) => branch.active !== false && activeAgents.some((agent) => agent.accountId === branch.id));
   const activeAdCountAgent = (id: string) => ads.filter((ad) => ad.status !== "closed" && ad.agentId === id).length;
-  const periodsTotal = publishingPeriodsDailyTotal(publishingPeriods);
-  const periodConfigReady = Number(publishingSettings.dailyLimit || 0) > 0 && periodsTotal === Number(publishingSettings.dailyLimit || 0) && publishingPeriods.some((period) => period.active !== false && period.adCount > 0);
+  const activePeriodsCount = publishingPeriods.filter((period) => period.active !== false).length;
+  const periodConfigReady = Number(publishingSettings.dailyLimit || 0) > 0 && activePeriodsCount > 0;
 
   async function saveHarajSettings(event: FormEvent) {
     event.preventDefault(); setError(""); setNotice("");
@@ -154,16 +150,14 @@ export function AccountsPage() {
 
   async function createPeriod(event: FormEvent) {
     event.preventDefault(); setError(""); setNotice("");
-    const count = Number(periodCount);
     if (!periodName.trim()) return setError("اكتب اسم فترة النشر.");
     if (!periodStart || !periodEnd || periodStart >= periodEnd) return setError("حدد وقت بداية ونهاية صحيح لفترة النشر.");
-    if (!Number.isInteger(count) || count < 1) return setError("عدد الإعلانات في الفترة يجب أن يكون رقمًا صحيحًا أكبر من صفر.");
     if (!periodAgentIds.length) return setError("اختر مناديب الفترة وحدد ترتيبهم.");
     setSaving(true);
     try {
       const maxOrder = publishingPeriods.reduce((max, item) => Math.max(max, Number(item.sortOrder || 0)), 0);
-      await addPublishingPeriod({ name: periodName.trim(), startTime: periodStart, endTime: periodEnd, adCount: count, agentIds: periodAgentIds, active: true, sortOrder: maxOrder + 10 });
-      setPeriodName(""); setPeriodStart(""); setPeriodEnd(""); setPeriodCount(""); setPeriodAgentIds([]);
+      await addPublishingPeriod({ name: periodName.trim(), startTime: periodStart, endTime: periodEnd, adCount: 1, agentIds: periodAgentIds, active: true, sortOrder: maxOrder + 10 });
+      setPeriodName(""); setPeriodStart(""); setPeriodEnd(""); setPeriodAgentIds([]);
       setNotice("تمت إضافة فترة النشر وترتيب المناديب.");
     } catch (e) { setError(e instanceof Error ? e.message : "تعذر إضافة فترة النشر"); }
     finally { setSaving(false); }
@@ -175,19 +169,19 @@ export function AccountsPage() {
     {notice ? <div className="alert success">{notice}</div> : null}
     {!publishingSettings.accountName || !publishingSettings.dailyLimit ? <div className="alert warning"><WarningCircle size={19} />احفظ اسم حساب حراج والحد اليومي قبل إنشاء جدول نشر جديد.</div> : null}
     {unassignedActiveAgents ? <div className="alert warning"><WarningCircle size={19} />يوجد {unassignedActiveAgents} مندوب نشط بدون فرع نشط. لن يدخل في أي فترة نشر.</div> : null}
-    {publishingSettings.dailyLimit && !periodConfigReady ? <div className="alert warning"><WarningCircle size={19} />مجموع إعلانات الفترات النشطة حاليًا = {periodsTotal}. يجب أن يساوي الحد اليومي = {publishingSettings.dailyLimit} قبل إنشاء جدول جديد.</div> : null}
+    {publishingSettings.dailyLimit && !periodConfigReady ? <div className="alert warning"><WarningCircle size={19} />أضف فترة نشر نشطة واحدة على الأقل قبل إنشاء جدول جديد. عدد الإعلانات اليومي يؤخذ من الحد اليومي فقط.</div> : null}
 
     <section className="stats-grid compact-stats">
       <StatCard label="حد حساب حراج اليومي" value={publishingSettings.dailyLimit || 0} hint="إجمالي الشركة في اليوم" tone="info" />
-      <StatCard label="إعلانات الفترات" value={periodsTotal} hint={periodConfigReady ? "مطابق للحد اليومي" : "يحتاج ضبط"} tone={periodConfigReady ? "good" : "warn"} />
+      <StatCard label="فترات النشر النشطة" value={activePeriodsCount} hint={periodConfigReady ? "لتوزيع أوقات النشر" : "أضف فترة نشطة"} tone={periodConfigReady ? "good" : "warn"} />
       <StatCard label="المجدول اليوم" value={todayAds.length} hint={`متبقي ${Math.max(0, publishingSettings.dailyLimit - todayAds.length)}`} tone="good" />
       <StatCard label="المناديب النشطون" value={activeAgents.length} hint={`${activeBranches.length} فروع نشطة`} />
     </section>
 
     <section className="panel single-account-panel">
-      <div className="panel-head"><div><h2><Storefront size={21} /> حساب حراج المستخدم حاليًا</h2><p>الحد اليومي للحساب كله. توزيعه الفعلي يتم من خلال فترات النشر بالأسفل، وليس بحصة تلقائية لكل فرع.</p></div></div>
+      <div className="panel-head"><div><h2><Storefront size={21} /> حساب حراج المستخدم حاليًا</h2><p>الحد اليومي هو عدد الإعلانات الثابت لكل يوم نشر. فترات النشر بالأسفل تحدد الوقت والمندوب فقط ولا تضيف أعدادًا مستقلة.</p></div></div>
       <form className="publishing-settings-form" onSubmit={saveHarajSettings}><label>اسم حساب / متجر حراج<input value={harajName} onChange={(e) => setHarajName(e.target.value)} placeholder="اكتب الاسم كما يظهر في حراج" /></label><label>الحد اليومي للحساب<input type="number" min="1" value={dailyLimit} onChange={(e) => setDailyLimit(e.target.value)} placeholder="مثال: 15" /></label><button className="primary-button" disabled={saving}><FloppyDisk size={18} />حفظ إعداد النشر</button></form>
-      <div className="single-account-rule"><strong>قاعدة التوزيع الجديدة:</strong> مجموع إعلانات الفترات النشطة يجب أن يساوي الحد اليومي. داخل كل فترة يتم التكليف على المناديب بالترتيب الذي تحدده أنت.</div>
+      <div className="single-account-rule"><strong>قاعدة العدد:</strong> الرقم المكتوب في «الحد اليومي للحساب» هو العدد النهائي لكل يوم. مثال: 3 إعلانات يوميًا = 21 إعلانًا في أسبوع كامل من السبت إلى الجمعة. فترات النشر تستخدم فقط لتوزيع المواعيد وترتيب المناديب.</div>
     </section>
 
     <section className="two-form-columns setup-grid">
@@ -196,9 +190,9 @@ export function AccountsPage() {
     </section>
 
     <section className="panel publishing-periods-panel">
-      <div className="panel-head"><div><h2><Clock size={21} /> فترات النشر</h2><p>حدد عدد الإعلانات في كل فترة والمناديب المشاركين وترتيبهم. مجموع الفترات النشطة يجب أن يساوي {publishingSettings.dailyLimit || 0} إعلان يوميًا.</p></div><span className={`period-total-badge ${periodConfigReady ? "ready" : "warn"}`}>{periodsTotal} / {publishingSettings.dailyLimit || 0}</span></div>
-      <form className="new-period-form" onSubmit={createPeriod}><div className="period-fields"><label>اسم الفترة<input value={periodName} onChange={(e) => setPeriodName(e.target.value)} placeholder="مثال: الفترة الصباحية" /></label><label>من<input type="time" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} /></label><label>إلى<input type="time" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} /></label><label>إعلانات / يوم<input type="number" min="1" value={periodCount} onChange={(e) => setPeriodCount(e.target.value)} placeholder="5" /></label></div><div className="period-order-head"><div><b>مناديب الفترة وترتيب النشر</b><span>أضف المناديب ثم استخدم الأسهم لترتيبهم.</span></div></div><AgentOrderPicker agentIds={periodAgentIds} onChange={setPeriodAgentIds} agents={agents} accounts={accounts} /><button className="primary-button" disabled={saving || !agents.length}><Plus size={18} />إضافة فترة النشر</button></form>
-      {!publishingPeriods.length ? <EmptyState title="لا توجد فترات نشر" text="أضف أول فترة وحدد عدد الإعلانات والمناديب وترتيبهم." /> : <div className="publishing-period-list">{publishingPeriods.map((period) => <PeriodEditor key={period.id} period={period} agents={agents} accounts={accounts} onError={setError} onNotice={setNotice} />)}</div>}
+      <div className="panel-head"><div><h2><Clock size={21} /> فترات النشر</h2><p>حدد أوقات النشر والمناديب المشاركين وترتيبهم. العدد اليومي لا يُكتب هنا؛ النظام يوزع الحد اليومي تلقائيًا على الفترات النشطة بالتتابع.</p></div><span className={`period-total-badge ${periodConfigReady ? "ready" : "warn"}`}>{activePeriodsCount} فترة نشطة</span></div>
+      <form className="new-period-form" onSubmit={createPeriod}><div className="period-fields"><label>اسم الفترة<input value={periodName} onChange={(e) => setPeriodName(e.target.value)} placeholder="مثال: الفترة الصباحية" /></label><label>من<input type="time" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} /></label><label>إلى<input type="time" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} /></label></div><div className="period-order-head"><div><b>مناديب الفترة وترتيب النشر</b><span>أضف المناديب ثم استخدم الأسهم لترتيبهم. عدد الإعلانات يأتي من الحد اليومي فقط.</span></div></div><AgentOrderPicker agentIds={periodAgentIds} onChange={setPeriodAgentIds} agents={agents} accounts={accounts} /><button className="primary-button" disabled={saving || !agents.length}><Plus size={18} />إضافة فترة النشر</button></form>
+      {!publishingPeriods.length ? <EmptyState title="لا توجد فترات نشر" text="أضف أول فترة وحدد وقتها والمناديب وترتيبهم." /> : <div className="publishing-period-list">{publishingPeriods.map((period) => <PeriodEditor key={period.id} period={period} agents={agents} accounts={accounts} onError={setError} onNotice={setNotice} />)}</div>}
     </section>
 
     <section className="panel"><div className="panel-head"><div><h2>الفروع</h2><p>لكل فرع اسم معرض مستقل يظهر داخل بياناته ويمكن تعديله في أي وقت.</p></div></div>{!accounts.length ? <EmptyState title="لا توجد فروع" text="أضف الفروع التي يعمل بها المناديب." /> : <div className="account-admin-grid">{accounts.map((branch) => { const reps = agents.filter((agent) => agent.accountId === branch.id); const active = reps.filter((agent) => agent.active && branch.active !== false).length; return <article className={`account-admin-card ${branch.active ? "" : "disabled"}`} key={branch.id}><div className="account-card-head"><div><strong>{branch.name}</strong><span>{branch.note || "فرع داخلي"}</span></div><label className="switch-label"><input type="checkbox" checked={branch.active} onChange={(e) => void updateAccount(branch.id, { active: e.target.checked })} /><span>{branch.active ? "نشط" : "موقوف"}</span></label></div><div className="inline-editor"><span>إجمالي المناديب: <b>{reps.length}</b></span><span>النشطون: <b>{active}</b></span></div><div className="branch-advertiser-editor"><label>اسم المعرض داخل صيغة الإعلان<input value={branchAdvertiserDrafts[branch.id] ?? branch.advertiserName ?? defaultBranchAdvertiserName(branch.name)} onChange={(e) => setBranchAdvertiserDrafts((current) => ({ ...current, [branch.id]: e.target.value }))} /></label><button className="secondary-button compact" onClick={() => void saveBranchAdvertiser(branch.id)} disabled={savingBranchId === branch.id}><FloppyDisk size={16} />{savingBranchId === branch.id ? "جارٍ الحفظ" : "حفظ المسمى"}</button></div><div className="account-card-actions"><ConfirmButton confirmText="حذف الفرع؟ لن يتم حذف التكليفات القديمة تلقائيًا." onConfirm={() => removeAccount(branch.id)}><Trash size={17} />حذف</ConfirmButton></div></article>; })}</div>}

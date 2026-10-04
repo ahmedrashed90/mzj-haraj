@@ -1,4 +1,4 @@
-MZJ Haraj Manager v1.12.0 CLEAN
+MZJ Haraj Manager v1.13.0 CLEAN
 
 CORE RULES
 - One actual Haraj account and one company daily limit.
@@ -11,7 +11,7 @@ CORE RULES
 - Cars without complete CompareKey are excluded from scheduling.
 - Agency-location stock remains excluded.
 
-V1.12.0 CONTACT ROTATION
+V1.13.0 CONTACT ROTATION
 - Every newly generated ad contains ALL agents whose active flag is enabled.
 - Each contact snapshot contains agentId, name and phone.
 - The contact list is rotated by one position for every next ad.
@@ -19,13 +19,13 @@ V1.12.0 CONTACT ROTATION
 - Missing name or phone for any active agent blocks schedule creation.
 - Assigned rep remains the publishing owner; contact rotation does not change assignment logic.
 
-V1.12.0 AUTOMATIC WINDOW
+V1.13.0 AUTOMATIC WINDOW
 - Automatic schedule starts on the same calendar day the button is pressed.
 - Automatic schedule ends on the coming Friday, inclusive.
 - Pressing the button on Friday creates a Friday-only window.
 - Manual selected-row scheduling keeps its previous suggested-window behavior.
 
-V1.12.0 WORD EXPORT
+V1.13.0 WORD EXPORT
 - PDF export was removed from the Schedule page.
 - Each branch exports a real DOCX file generated in-browser.
 - DOCX includes summary, day tables, assigned rep/type/vehicle/link status, and publishing policies.
@@ -48,3 +48,8 @@ FIRESTORE
 WORDPRESS BRIDGE
 - MZJ Haraj Ad Data Bridge v1.1.0
 - Read-only endpoint /wp-json/mzj-haraj/v1/cars
+
+V1.13.0 DAILY LIMIT / PERIODS
+- Daily limit is fixed per publishing day and is no longer required to equal the sum of publishing-period counts.
+- Publishing periods are time/rep-order slots only.
+- Automatic schedule quantity = dailyLimit * days in the active plan window minus already scheduled open ads in that window.

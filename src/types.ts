@@ -25,7 +25,7 @@ export type PublishingPeriod = {
   name: string;
   startTime: string;
   endTime: string;
-  /** Number of ads assigned to this period every publishing day. */
+  /** Legacy compatibility field. Ad quantity now comes only from PublishingSettings.dailyLimit. */
   adCount: number;
   /** Ordered rep ids. Their order is the publishing order inside this period. */
   agentIds: string[];
