@@ -60,11 +60,16 @@ export function formatWeekRange(weekStart: string) { return `${formatDateArabic(
 export function formatPlanRange(planStart: string, planEnd: string) { return `من ${formatDateArabic(planStart, { weekday: "long", day: "numeric", month: "short", year: "numeric" })} إلى ${formatDateArabic(planEnd, { weekday: "long", day: "numeric", month: "short", year: "numeric" })}`; }
 function countsForCoverage(ad: HarajAd) { return ad.status !== "closed" || Boolean(String(ad.url || "").trim() || ad.publishedAt); }
 export function getCoverageCycle(ad: HarajAd) { return Number(ad.coverageCycle || 1); }
+export function getAdVehicleKeys(ad: Pick<HarajAd, "vehicleKey" | "vehicleVariants">) {
+  const variants = Array.isArray(ad.vehicleVariants) ? ad.vehicleVariants : [];
+  const keys = variants.length ? variants.map((variant) => variant.vehicleKey) : [ad.vehicleKey];
+  return [...new Set(keys.filter(Boolean))];
+}
 export function currentCoverageCycle(ads: HarajAd[]) { const relevant = ads.filter(countsForCoverage); return Math.max(1, ...relevant.map(getCoverageCycle)); }
 export function getCoverageState(stock: StockGroup[], ads: HarajAd[]) {
   const relevant = ads.filter(countsForCoverage);
   const current = currentCoverageCycle(relevant);
-  const covered = new Set(relevant.filter((ad) => getCoverageCycle(ad) === current).map((ad) => ad.vehicleKey));
+  const covered = new Set(relevant.filter((ad) => getCoverageCycle(ad) === current).flatMap(getAdVehicleKeys));
   const eligible = stock.filter((row) => !covered.has(row.key));
   if (stock.length && !eligible.length) return { cycle: current + 1, previousCycle: current, startedNewCycle: true, coveredKeys: new Set<string>(), eligibleRows: [...stock], coveredCount: 0 };
   return { cycle: current, previousCycle: Math.max(1, current - 1), startedNewCycle: false, coveredKeys: covered, eligibleRows: eligible, coveredCount: stock.length - eligible.length };
@@ -134,19 +139,58 @@ type BuildInput = {
   agents: Agent[];
   existingAds: HarajAd[];
   requestedCount?: number;
+  /** Automatic schedules combine trims with the same model/year/technical class. */
+  mergeVariants?: boolean;
 };
 
-type VehicleTarget = { vehicle: StockGroup; coverageCycle: number };
+type VehicleTarget = { vehicles: StockGroup[]; coverageCycle: number };
 type PublishingSlot = {
   day: ReturnType<typeof getPlanDays>[number];
   agent: Agent;
   agentSequence: number;
 };
 
-function buildVehicleTargets(vehicles: StockGroup[], existingAds: HarajAd[], startCycle: number, requested: number): VehicleTarget[] {
+function normalizeVehiclePart(value: string) {
+  return String(value || "")
+    .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 0x06f0))
+    .toLowerCase().replace(/[\u064b-\u065f\u0670]/g, "").replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * The statement also contains technical differences beyond the trim (e.g.
+ * 1500cc vs 2000cc, double vs single drivetrain). Never merge those.
+ * Without an explicit engine size it is safer to keep the stock item alone.
+ */
+export function getAutomaticVariantGroupKey(vehicle: StockGroup) {
+  const statement = normalizeVehiclePart(vehicle.statement);
+  const cc = statement.match(/(?:^|\D)(\d{3,4})\s*(?:سي\s*سي|سيسي|cc)(?=\W|$)/i);
+  const liters = statement.match(/(?:^|\D)(\d(?:[.,]\d+)?)\s*(?:لتر|liter|litre|l)(?=\W|$)/i);
+  const engine = cc ? String(Number(cc[1])) : liters ? String(Math.round(Number(liters[1].replace(",", ".")) * 1000)) : "";
+  if (!engine) return `single:${vehicle.key}`;
+
+  const drivetrain = /(?:بدون\s*دبل|4\s*x\s*2|2wd|دفع\s*امامي|دفع\s*خلفي)/i.test(statement) ? "2wd"
+    : /(?:دبل|4\s*x\s*4|4wd|awd|دفع\s*رباعي)/i.test(statement) ? "4wd" : "";
+  const seats = statement.match(/(\d+)\s*(?:ركاب|مقاعد|مقعد)/)?.[1] || "";
+  const gearbox = /(?:قير\s*عادي|يدوي|manual)/i.test(statement) ? "manual"
+    : /(?:اوتوماتيك|اتوماتيك|قير\s*اوتو|automatic)/i.test(statement) ? "automatic" : "";
+  const fuel = /ديزل|diesel/i.test(statement) ? "diesel" : /بنزين|petrol|gasoline/i.test(statement) ? "petrol" : "";
+  return [normalizeVehiclePart(vehicle.carName), normalizeVehiclePart(vehicle.modelYear), engine, drivetrain, seats, gearbox, fuel].join("|");
+}
+
+function buildVehicleTargets(vehicles: StockGroup[], existingAds: HarajAd[], startCycle: number, requested: number, mergeVariants: boolean): VehicleTarget[] {
   const uniqueMap = new Map<string, StockGroup>();
   vehicles.forEach((row) => { if (row?.key && !uniqueMap.has(row.key)) uniqueMap.set(row.key, row); });
-  const pool = [...uniqueMap.values()].sort((a, b) => a.carName.localeCompare(b.carName, "ar") || a.statement.localeCompare(b.statement, "ar") || a.modelYear.localeCompare(b.modelYear, "ar"));
+  const sorted = [...uniqueMap.values()].sort((a, b) => a.carName.localeCompare(b.carName, "ar") || a.statement.localeCompare(b.statement, "ar") || a.modelYear.localeCompare(b.modelYear, "ar"));
+  const groups = new Map<string, StockGroup[]>();
+  sorted.forEach((row) => {
+    const key = mergeVariants ? getAutomaticVariantGroupKey(row) : `single:${row.key}`;
+    const group = groups.get(key) || [];
+    group.push(row);
+    groups.set(key, group);
+  });
+  const pool = [...groups.values()];
   if (!pool.length || requested <= 0) return [];
 
   const result: VehicleTarget[] = [];
@@ -156,16 +200,16 @@ function buildVehicleTargets(vehicles: StockGroup[], existingAds: HarajAd[], sta
   while (result.length < requested && guard < requested * Math.max(2, pool.length + 1)) {
     guard += 1;
     if (!usedByCycle.has(cycle)) {
-      const covered = new Set(existingAds.filter((ad) => countsForCoverage(ad) && getCoverageCycle(ad) === cycle).map((ad) => ad.vehicleKey));
+      const covered = new Set(existingAds.filter((ad) => countsForCoverage(ad) && getCoverageCycle(ad) === cycle).flatMap(getAdVehicleKeys));
       usedByCycle.set(cycle, covered);
     }
     const used = usedByCycle.get(cycle)!;
-    const remaining = pool.filter((vehicle) => !used.has(vehicle.key));
+    const remaining = pool.map((group) => group.filter((vehicle) => !used.has(vehicle.key))).filter((group) => group.length);
     if (!remaining.length) { cycle += 1; continue; }
-    for (const vehicle of remaining) {
+    for (const group of remaining) {
       if (result.length >= requested) break;
-      result.push({ vehicle, coverageCycle: cycle });
-      used.add(vehicle.key);
+      result.push({ vehicles: group, coverageCycle: cycle });
+      group.forEach((vehicle) => used.add(vehicle.key));
     }
   }
   return result;
@@ -182,7 +226,7 @@ function buildVehicleTargets(vehicles: StockGroup[], existingAds: HarajAd[], sta
  * - Every ad still contains all active reps in its contact block, with the visible contact order rotated from ad to ad.
  * - A vehicle is never repeated inside the same coverage cycle. After all eligible cars are used, a new cycle starts so the daily limit can keep being filled.
  */
-export function buildPublishingAssignments({ vehicles, planStart, planEnd, coverageCycle, settings, branches, agents, existingAds, requestedCount }: BuildInput) {
+export function buildPublishingAssignments({ vehicles, planStart, planEnd, coverageCycle, settings, branches, agents, existingAds, requestedCount, mergeVariants = false }: BuildInput) {
   const days = getPlanDays(planStart, planEnd);
   if (!days.length) throw new Error("فترة جدول النشر غير صحيحة.");
   const accountName = String(settings.accountName || "").trim();
@@ -207,7 +251,7 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
   const requested = Math.min(totalRemaining, Math.max(0, Math.floor(Number(requestedCount ?? totalRemaining))));
   if (!requested) throw new Error("لا توجد سعة متبقية لإنشاء الجدول.");
 
-  const vehicleTargets = buildVehicleTargets(uniqueVehicles, existingAds, coverageCycle, requested);
+  const vehicleTargets = buildVehicleTargets(uniqueVehicles, existingAds, coverageCycle, requested, mergeVariants);
   if (vehicleTargets.length !== requested) throw new Error("تعذر تجهيز دورة تغطية السيارات.");
 
   const assignmentHistory = existingAds
@@ -242,7 +286,7 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
   const existingRotationOffset = assignmentHistory.length;
 
   return vehicleTargets.map((target, index): PublishingAssignmentDraft => {
-    const vehicle = target.vehicle;
+    const vehicle = target.vehicles[0];
     const slot = slots[index];
     const branchId = String(slot.agent.accountId || "");
     const branch = branchById.get(branchId);
@@ -250,10 +294,15 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
 
     return {
       vehicleKey: vehicle.key,
+      ...(target.vehicles.length > 1 ? { vehicleVariants: target.vehicles.map((variant) => ({
+        vehicleKey: variant.key,
+        statement: variant.statement,
+        stockQtySnapshot: variant.quantity,
+      })) } : {}),
       carName: vehicle.carName,
-      statement: vehicle.statement,
+      statement: target.vehicles.map((variant) => variant.statement).join(" | "),
       modelYear: vehicle.modelYear,
-      stockQtySnapshot: vehicle.quantity,
+      stockQtySnapshot: target.vehicles.reduce((sum, variant) => sum + variant.quantity, 0),
       accountId: branchId,
       branchId,
       agentId: slot.agent.id,

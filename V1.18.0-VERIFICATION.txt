@@ -1,0 +1,22 @@
+MZJ Haraj Manager v1.18.0 CLEAN - Verification
+
+SOURCE: Original user-provided v1.17.0 ZIP (no patches to the deployed system)
+
+CHANGE
+- Automatic schedule groups eligible trims into a single Haraj ad when model, model year, engine capacity, and technical details present in the inventory statement match.
+- The example Accent 2026 Smart 1500cc GL + Fleet 1500cc L is one ad.
+- Engine sizes, production years, drivetrains and other clearly different technical classes remain separate.
+- Groups with no clearly extractable engine size remain individual to avoid unsafe merges.
+- The combined listing contains each variant's own description, CompareKey features, website price, and quantity. Contacts appear once.
+- Firestore ads store the combined variant snapshots in vehicleVariants; existing/legacy ads are unchanged.
+- Coverage accounts for all vehicle keys in each combined listing. This works across coverage cycles and with old single-vehicle ads.
+- Only automatic scheduling groups trims; manual selection and scheduling are unchanged.
+- All existing daily ad capacities, global agent round-robin rotation, week/day ordering, and individual ad statuses remain intact.
+- Weekly Word DOCX exports preserve all variant sections and real prices in one ad without replacing them by one misleading price.
+
+VERIFICATION
+- TypeScript strict core logic typecheck passed (schedule, ad-copy, types, branch-advertiser).
+- Parsed/transpiled all 25 TypeScript/TSX source/API modules without syntax errors.
+- Runtime tests passed: grouping, engine/year/drivetrain safeguards, one ad for two Accent trims, six slots at three ads/day, rep rotation, individual site specs/prices, legacy and multi-variant coverage, no change to manual scheduling.
+- Generated and validated a real weekly DOCX ZIP containing both example variant prices under the same ad.
+- Full Vite build was not available in this isolated environment because node_modules was not present and the npm dependency registry was unreachable. Run npm install && npm run build in the usual deployment environment.

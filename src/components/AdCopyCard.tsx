@@ -1,6 +1,6 @@
 import { Check, Copy, LinkSimple, WarningCircle } from "@phosphor-icons/react";
 import { useState } from "react";
-import { areAdContactsReady, getAdContactSnapshots } from "../ad-copy";
+import { areAdContactsReady, areAdPricesReady, getAdContactSnapshots } from "../ad-copy";
 import type { HarajAd } from "../types";
 
 function fallbackCopy(text: string) {
@@ -40,6 +40,8 @@ export function normalizeAdTextForPublishing(value: unknown, price: string) {
 
 
 export function getPublishingAdText(ad: HarajAd) {
+  // Combined ads have one price per trim, so never replace them with one price.
+  if (ad.vehicleVariants && ad.vehicleVariants.length > 1) return clean(ad.adText);
   const price = formatPublishingPrice(Number(ad.websitePrice || 0));
   return normalizeAdTextForPublishing(ad.adText, price);
 }
@@ -48,18 +50,28 @@ export function getPublishingPrice(ad: HarajAd) {
   return formatPublishingPrice(Number(ad.websitePrice || 0));
 }
 
+function getPriceDisplay(ad: HarajAd) {
+  const variants = ad.vehicleVariants || [];
+  if (variants.length < 2) return getPublishingPrice(ad);
+  const prices = variants.map((variant) => Number(variant.websitePrice || 0));
+  if (!prices.every((price) => price > 0)) return "";
+  const lowest = Math.min(...prices);
+  const highest = Math.max(...prices);
+  return lowest === highest ? `${formatPublishingPrice(lowest)} ريال لكل الفئات`
+    : `${formatPublishingPrice(lowest)} - ${formatPublishingPrice(highest)} ريال حسب الفئة`;
+}
+
 export function AdCopyCard({ ad, compact = false }: { ad: HarajAd; compact?: boolean }) {
   const [copiedKey, setCopiedKey] = useState("");
   const agentName = clean(ad.agentNameSnapshot);
   const agentPhone = clean(ad.agentPhoneSnapshot);
-  const numericPrice = Number(ad.websitePrice || 0);
-  const price = formatPublishingPrice(numericPrice);
-  const text = normalizeAdTextForPublishing(ad.adText, price);
+  const price = getPriceDisplay(ad);
+  const text = getPublishingAdText(ad);
   const title = clean(ad.adTitle);
   const compareKeyReady = ad.specsStatus === "matched";
   const contactRows = getAdContactSnapshots(ad);
   const contactReady = areAdContactsReady(ad);
-  const priceReady = Boolean(price);
+  const priceReady = areAdPricesReady(ad);
   const ready = compareKeyReady && Boolean(title) && Boolean(text) && contactReady && priceReady;
   const partial = ad.specsStatus === "partial";
 
@@ -89,7 +101,7 @@ export function AdCopyCard({ ad, compact = false }: { ad: HarajAd; compact?: boo
     <div className="ad-publish-values">
       <div className="ad-publish-value"><span>المندوب المكلف</span><b>{agentName || "—"}</b><button type="button" className="copy-mini-button" disabled={!agentName} onClick={() => void copyValue("agent", agentName)}>{copiedKey === "agent" ? <Check size={14} /> : <Copy size={14} />}<em>{copiedKey === "agent" ? "تم" : "نسخ"}</em></button></div>
       <div className="ad-publish-value"><span>جوال المكلف</span><b className="ltr-value">{agentPhone || "—"}</b><button type="button" className="copy-mini-button" disabled={!agentPhone} onClick={() => void copyValue("phone", agentPhone)}>{copiedKey === "phone" ? <Check size={14} /> : <Copy size={14} />}<em>{copiedKey === "phone" ? "تم" : "نسخ"}</em></button></div>
-      <div className="ad-publish-value"><span>السعر في حراج</span><b>{price ? `${price} ريال` : "—"}</b><button type="button" className="copy-mini-button" disabled={!price} onClick={() => void copyValue("price", price)}>{copiedKey === "price" ? <Check size={14} /> : <Copy size={14} />}<em>{copiedKey === "price" ? "تم" : "نسخ"}</em></button></div>
+      <div className="ad-publish-value"><span>{ad.vehicleVariants && ad.vehicleVariants.length > 1 ? "أسعار الفئات في حراج" : "السعر في حراج"}</span><b>{price ? (ad.vehicleVariants && ad.vehicleVariants.length > 1 ? price : `${price} ريال`) : "—"}</b><button type="button" className="copy-mini-button" disabled={!price} onClick={() => void copyValue("price", price)}>{copiedKey === "price" ? <Check size={14} /> : <Copy size={14} />}<em>{copiedKey === "price" ? "تم" : "نسخ"}</em></button></div>
     </div>
 
     <div className="ad-copy-actions">

@@ -2,13 +2,14 @@ import { useMemo, useState } from "react";
 import { ArrowClockwise, CalendarBlank, CheckCircle, CheckSquare, MagnifyingGlass, Plus, SquaresFour, WarningCircle } from "@phosphor-icons/react";
 import { useNavigate } from "react-router-dom";
 import { useAppData } from "../AppDataContext";
-import { areAdContactsReady, enrichAssignmentsWithAdCopy, getCompareKeyState, matchWebsiteCar } from "../ad-copy";
+import { areAdContactsReady, areAdPricesReady, enrichAssignmentsWithAdCopy, getCompareKeyState, matchWebsiteCar } from "../ad-copy";
 import { createPublishingAssignments } from "../data";
 import {
   buildPublishingAssignments,
   formatPlanRange,
   getAutomaticPlanWindow,
   getCoverageState,
+  getAdVehicleKeys,
   getPlanDays,
   getPublishingPlanCapacity,
   getPublishingRemainingCapacity,
@@ -78,8 +79,10 @@ export function InventoryPage() {
   const latestByVehicle = useMemo(() => {
     const map = new Map<string, (typeof ads)[number]>();
     ads.forEach((ad) => {
-      const prev = map.get(ad.vehicleKey);
-      if (!prev || String(ad.scheduledDate || ad.assignedAt || "") > String(prev.scheduledDate || prev.assignedAt || "")) map.set(ad.vehicleKey, ad);
+      getAdVehicleKeys(ad).forEach((key) => {
+        const prev = map.get(key);
+        if (!prev || String(ad.scheduledDate || ad.assignedAt || "") > String(prev.scheduledDate || prev.assignedAt || "")) map.set(key, ad);
+      });
     });
     return map;
   }, [ads]);
@@ -140,13 +143,14 @@ export function InventoryPage() {
           agents,
           existingAds: ads,
           requestedCount: planRequestedCount || draftRows.length,
+          mergeVariants: planAutomatic,
         }),
         error: "",
       };
     } catch (e) {
       return { rows: [] as ReturnType<typeof buildPublishingAssignments>, error: e instanceof Error ? e.message : "تعذر تجهيز الجدول" };
     }
-  }, [showPlan, planStart, planEnd, draftRows, planRequestedCount, coverageState.cycle, publishingSettings, accounts, agents, ads]);
+  }, [showPlan, planStart, planEnd, draftRows, planRequestedCount, planAutomatic, coverageState.cycle, publishingSettings, accounts, agents, ads]);
 
   const previewRows = useMemo(() => enrichAssignmentsWithAdCopy(basePreview.rows, stock, websiteCars, publishingSettings), [basePreview.rows, stock, websiteCars, publishingSettings]);
   const days = planStart && planEnd ? getPlanDays(planStart, planEnd) : [];
@@ -168,9 +172,9 @@ export function InventoryPage() {
   const matched = previewRows.filter((ad) => ad.specsStatus === "matched").length;
   const partial = previewRows.filter((ad) => ad.specsStatus === "partial").length;
   const missing = previewRows.filter((ad) => ad.specsStatus === "missing").length;
-  const missingPrice = previewRows.filter((ad) => !(Number(ad.websitePrice || 0) > 0)).length;
+  const missingPrice = previewRows.filter((ad) => !areAdPricesReady(ad)).length;
   const missingContact = previewRows.filter((ad) => !areAdContactsReady(ad)).length;
-  const notReadyRows = previewRows.filter((ad) => ad.specsStatus !== "matched" || !(Number(ad.websitePrice || 0) > 0) || !areAdContactsReady(ad));
+  const notReadyRows = previewRows.filter((ad) => ad.specsStatus !== "matched" || !areAdPricesReady(ad) || !areAdContactsReady(ad));
   const notReady = notReadyRows.length;
   const specsProblems = previewRows.filter((ad) => ad.specsStatus !== "matched");
 

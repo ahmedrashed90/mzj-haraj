@@ -1,4 +1,4 @@
-MZJ Haraj Manager v1.17.0 CLEAN
+MZJ Haraj Manager v1.18.0 CLEAN
 
 CORE PUBLISHING MODEL
 - One actual Haraj account and one company daily limit.
@@ -27,6 +27,10 @@ VEHICLE COVERAGE
 - After all eligible vehicles are covered, a new cycle starts automatically.
 - Cars without complete CompareKey are excluded.
 - Agency-location stock remains excluded.
+- In automatic schedules, stock rows representing trims of the same model/year/engine/technical class share a single ad.
+- Every grouped ad contains all of its included vehicle keys; coverage is tracked separately for every included key.
+- Each trim retains its own CompareKey specifications and individual website price inside the same ad.
+- Manual schedules still assign one selected stock row per ad.
 
 WORD EXPORT
 - PDF export is removed.
@@ -40,7 +44,7 @@ FIRESTORE
 - haraj_accounts
 - agents
 - haraj_ads
-- legacy publishing_periods collection is no longer read or used by v1.17.0.
+- legacy publishing_periods collection is no longer read or used by v1.18.0.
 
 WORDPRESS BRIDGE
 - MZJ Haraj Ad Data Bridge v1.1.0

@@ -21,6 +21,13 @@ export function areAdContactsReady(ad: Pick<HarajAd, "contactAgentsSnapshot" | "
   return rows.length > 0 && rows.every((row) => Boolean(row.name && row.phone));
 }
 
+/** One missing variant price must prevent publishing the entire combined ad. */
+export function areAdPricesReady(ad: Pick<HarajAd, "vehicleVariants" | "websitePrice">) {
+  const variants = Array.isArray(ad.vehicleVariants) ? ad.vehicleVariants : [];
+  if (variants.length > 1) return variants.every((variant) => Number(variant.websitePrice || 0) > 0);
+  return Number(ad.websitePrice || 0) > 0;
+}
+
 function normalizeArabic(value: unknown) {
   return clean(value)
     .toLowerCase()
@@ -250,6 +257,79 @@ export function buildAdCopy(
   };
 }
 
+/**
+ * Builds one listing from multiple trims. Each trim keeps its own CompareKey
+ * features and actual website price; nothing is borrowed from another trim.
+ */
+function buildCombinedAdCopy(
+  entries: Array<{ stock: StockGroup; websiteCar: WebsiteCarData | null }>,
+  agentType: AgentType,
+  contactAgents: AgentContactSnapshot[] = [],
+) {
+  const { stock: primary } = entries[0];
+  const label = [goodValue(primary.carName), goodValue(primary.modelYear)].filter(Boolean).join(" ");
+  const adTitle = agentType === "installment"
+    ? buildInstallmentTitle(primary)
+    : `${label} | فئات متعددة متوفرة`;
+  const lines: string[] = [label, "", "متوفرة الآن", "", `الموديل: ${primary.modelYear}`, "", "الفئات المتوفرة:"];
+  entries.forEach(({ stock, websiteCar }) => {
+    lines.push(`• ${stock.statement}`);
+  });
+
+  for (const [index, { stock, websiteCar }] of entries.entries()) {
+    lines.push("", `الفئة ${index + 1}: ${stock.statement}`);
+    if (websiteCar) {
+      const specs = buildBaseSpecLines(websiteCar);
+      if (specs.length) lines.push("", "المواصفات الرئيسية:", ...specs.map((line) => `• ${line}`));
+      const blocks = [
+        categoryBlock("المواصفات الداخلية", websiteCar.interiorSpecs),
+        categoryBlock("المواصفات الخارجية", websiteCar.exteriorSpecs),
+        categoryBlock("مواصفات الأمان", websiteCar.safetySpecs),
+      ].filter(Boolean);
+      blocks.forEach((block) => lines.push("", block));
+      const price = formatPrice(websiteCar.price);
+      if (price) lines.push("", `سعر فئة ${stock.statement} شامل الضريبة: ${price} ريال`);
+    }
+  }
+
+  const contacts = (Array.isArray(contactAgents) ? contactAgents : [])
+    .map((row) => ({ name: clean(row.name), phone: clean(row.phone) }))
+    .filter((row) => row.name || row.phone);
+  if (contacts.length) {
+    lines.push("", "للتواصل:");
+    contacts.forEach((row) => lines.push(`• ${[row.name, row.phone].filter(Boolean).join(" — ")}`));
+  }
+  lines.push("", "احصل على الخصم والهدايا عند التواصل");
+
+  const issues = entries.flatMap(({ stock, websiteCar }) => {
+    const state = getCompareKeyState(websiteCar);
+    return state.issue ? [`${stock.statement}: ${state.issue}`] : [];
+  });
+  const statuses = entries.map(({ websiteCar }) => getCompareKeyState(websiteCar).status);
+  const specsStatus: SpecsStatus = statuses.includes("missing") ? "missing" : statuses.includes("partial") ? "partial" : "matched";
+  const prices = entries.map(({ websiteCar }) => Number(websiteCar?.price || 0)).filter((price) => price > 0);
+  const firstCar = entries[0].websiteCar;
+
+  return {
+    adTitle,
+    adText: lines.join("\n").replace(/\n{3,}/g, "\n\n").trim(),
+    specsStatus,
+    specsIssue: issues.join(" | "),
+    websitePostId: firstCar?.postId,
+    websiteVehicleId: firstCar?.vehicleId || "",
+    websiteCompareKey: firstCar?.compareKey || "",
+    websiteCompareKeyStatus: firstCar?.compareKeyStatus || "unavailable",
+    websiteCompareKeyFound: Boolean(firstCar?.compareKeyFound),
+    websiteInteriorSpecsCount: entries.reduce((sum, { websiteCar }) => sum + (websiteCar ? uniqueFeatures(websiteCar.interiorSpecs).length : 0), 0),
+    websiteExteriorSpecsCount: entries.reduce((sum, { websiteCar }) => sum + (websiteCar ? uniqueFeatures(websiteCar.exteriorSpecs).length : 0), 0),
+    websiteSafetySpecsCount: entries.reduce((sum, { websiteCar }) => sum + (websiteCar ? uniqueFeatures(websiteCar.safetySpecs).length : 0), 0),
+    websitePermalink: firstCar?.permalink || "",
+    // Compatibility with existing overview/readiness widgets; price for each
+    // trim is also frozen separately in vehicleVariants below.
+    websitePrice: prices.length ? Math.min(...prices) : 0,
+  };
+}
+
 export function enrichAssignmentsWithAdCopy<T extends Omit<HarajAd, "id">>(
   assignments: T[],
   stock: StockGroup[],
@@ -258,6 +338,31 @@ export function enrichAssignmentsWithAdCopy<T extends Omit<HarajAd, "id">>(
 ) {
   const stockByKey = new Map(stock.map((row) => [row.key, row]));
   return assignments.map((assignment) => {
+    if (assignment.vehicleVariants && assignment.vehicleVariants.length > 1) {
+      const entries = assignment.vehicleVariants.map((variant) => {
+        const row = stockByKey.get(variant.vehicleKey) || {
+          key: variant.vehicleKey,
+          carName: assignment.carName,
+          statement: variant.statement,
+          modelYear: assignment.modelYear,
+          statusName: "متاح للبيع",
+          quantity: variant.stockQtySnapshot,
+        };
+        return { stock: row, websiteCar: matchWebsiteCar(row, websiteCars) };
+      });
+      return {
+        ...assignment,
+        ...buildCombinedAdCopy(entries, assignment.agentTypeSnapshot || "cash", assignment.contactAgentsSnapshot),
+        vehicleVariants: entries.map(({ stock: row, websiteCar }) => ({
+          vehicleKey: row.key,
+          statement: row.statement,
+          stockQtySnapshot: row.quantity,
+          websitePrice: websiteCar?.price || 0,
+          websitePostId: websiteCar?.postId || 0,
+          websiteCompareKey: websiteCar?.compareKey || "",
+        })),
+      };
+    }
     const row = stockByKey.get(assignment.vehicleKey) || {
       key: assignment.vehicleKey,
       carName: assignment.carName,

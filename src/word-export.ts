@@ -65,6 +65,8 @@ function normalizeAdTextForWord(value: unknown, price: string) {
 }
 
 function getWordAdText(ad: HarajAd) {
+  // Each category already carries its real website price in the combined body.
+  if (ad.vehicleVariants && ad.vehicleVariants.length > 1) return String(ad.adText || "").trim();
   return normalizeAdTextForWord(ad.adText, formatPublishingPrice(Number(ad.websitePrice || 0)));
 }
 

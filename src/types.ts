@@ -45,9 +45,21 @@ export type AdStatus = "assigned" | "published" | "approved" | "needs_fix" | "cl
 export type SpecsStatus = "matched" | "partial" | "missing";
 export type CompareKeyStatus = "found" | "missing_key" | "not_found" | "unavailable";
 
+/** Individual inventory groups represented by one combined Haraj advertisement. */
+export type AdVehicleVariant = {
+  vehicleKey: string;
+  statement: string;
+  stockQtySnapshot: number;
+  websitePrice?: number;
+  websitePostId?: number;
+  websiteCompareKey?: string;
+};
+
 export type HarajAd = {
   id: string;
   vehicleKey: string;
+  /** Present only for newly combined ads. Legacy and single-variant ads use vehicleKey. */
+  vehicleVariants?: AdVehicleVariant[];
   carName: string;
   statement: string;
   modelYear: string;
