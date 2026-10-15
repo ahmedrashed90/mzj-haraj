@@ -221,6 +221,7 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
   const setupIssue = validatePublishingSetup(settings, agents, branches);
   if (setupIssue) throw new Error(setupIssue);
   const eligibleAgents = getEligiblePublishingAgents(agents, branches);
+  const contactAgents = getActiveContactAgents(agents);
   const branchById = new Map(branches.map((branch) => [branch.id, branch]));
 
   const uniqueVehicleMap = new Map<string, StockGroup>();
@@ -266,6 +267,7 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
 
   const weekStart = getWeekStartKey(planStart);
   const planId = `plan-${planStart}-${planEnd}-${Date.now()}`;
+  const existingRotationOffset = assignmentHistory.length;
 
   return vehicleTargets.map((target, index): PublishingAssignmentDraft => {
     const vehicle = target.vehicles[0];
