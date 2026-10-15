@@ -1,0 +1,9 @@
+MZJ Haraj v1.19.0 CLEAN
+- Automatic publishing window: Saturday through Thursday (6 days); Friday excluded from capacity and assignment.
+- Automatic listings group the same car name across statements, trims, engine versions and model years.
+- Each original stock variant retains its vehicle key, year, statement and own live website price/CompareKey in the frozen assignment.
+- Ad body: vehicle/year heading, available sourced specifications, per-variant tax-inclusive prices, branch-grouped active sales contacts, business hours and closing notice.
+- Weekly Word export uses the exact stored ad copy, without appending a duplicate price section.
+- Global round-robin assigned salesperson and daily publishing limit are unchanged.
+- Existing saved advertising records are not migrated or rewritten.
+Validation: TypeScript transpilation syntax diagnostics passed for changed files. Full npm build could not run because dependencies could not be installed in this environment.

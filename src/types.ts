@@ -24,6 +24,7 @@ export type AgentContactSnapshot = {
   agentId: string;
   name: string;
   phone: string;
+  branchName?: string;
 };
 
 export type Agent = {
@@ -49,6 +50,7 @@ export type CompareKeyStatus = "found" | "missing_key" | "not_found" | "unavaila
 export type AdVehicleVariant = {
   vehicleKey: string;
   statement: string;
+  modelYear?: string;
   stockQtySnapshot: number;
   websitePrice?: number;
   websitePostId?: number;

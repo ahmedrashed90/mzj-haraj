@@ -172,162 +172,83 @@ export function getCompareKeyState(car: WebsiteCarData | null) {
   return { status: "matched" as SpecsStatus, issue: "" };
 }
 
-export function buildAdCopy(
-  stock: StockGroup,
-  websiteCar: WebsiteCarData | null,
-  settings: PublishingSettings,
-  advertiserName?: string,
-  agentName?: string,
-  agentPhone?: string,
-  agentType: AgentType = "cash",
-  contactAgents?: AgentContactSnapshot[],
-) {
-  // advertiserName/settings are intentionally kept in the function contract for
-  // the existing assignment snapshot/configuration, but the Haraj ad body itself
-  // now uses the neutral availability line requested by Operations.
-  void advertiserName;
-  void settings;
-  const contactName = clean(agentName);
-  const contactPhone = clean(agentPhone);
-  const contactRows = (Array.isArray(contactAgents) ? contactAgents : [])
-    .map((row) => ({ agentId: clean(row?.agentId), name: clean(row?.name), phone: clean(row?.phone) }))
-    .filter((row) => row.name || row.phone);
-  if (!contactRows.length && (contactName || contactPhone)) contactRows.push({ agentId: "", name: contactName, phone: contactPhone });
-  const bodyTitle = goodValue(websiteCar?.title) || [stock.carName, stock.statement, stock.modelYear].filter(goodValue).join(" - ");
-  const adTitle = agentType === "installment" ? buildInstallmentTitle(stock) : bodyTitle;
-  const lines: string[] = [bodyTitle, "", "متوفرة الآن"];
-  let formattedPrice = "";
+const RULE = "ــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــ";
+const CLOSING = [
+  RULE, "* (مواعيد العمل) *", "________________________",
+  "9:00 صباحا : 9:00 مساءا", "________________________", 
+  "برجاء مراعاة أوقات الاتصال أثناء أوقات الدوام فقط.",
+  "ملحوظة: الإعلان اليومي يلغي أي عرض إعلاني سابق.", RULE,
+  "***(وصلى الله على نبينا محمد وعلى آله وصحبه أجمعين)***",
+];
 
-  if (websiteCar) {
-    formattedPrice = formatPrice(websiteCar.price);
-    const identityLines: string[] = [];
-    if (goodValue(stock.modelYear)) identityLines.push(`الموديل: ${stock.modelYear}`);
-    if (goodValue(websiteCar.trim || stock.statement)) identityLines.push(`الفئة: ${goodValue(websiteCar.trim || stock.statement)}`);
-    if (identityLines.length) lines.push("", ...identityLines);
-
-    const baseSpecs = buildBaseSpecLines(websiteCar);
-    if (baseSpecs.length) lines.push("", "المواصفات الرئيسية:", ...baseSpecs.map((item) => `• ${item}`));
-
-    // The three feature sections below are intentionally sourced only from the
-    // CompareKey row returned by the WordPress bridge.
-    const blocks = [
-      categoryBlock("المواصفات الداخلية", websiteCar.interiorSpecs),
-      categoryBlock("المواصفات الخارجية", websiteCar.exteriorSpecs),
-      categoryBlock("مواصفات الأمان", websiteCar.safetySpecs),
-    ].filter(Boolean);
-    if (blocks.length) lines.push("", ...blocks.flatMap((block, index) => index ? ["", block] : [block]));
-  } else {
-    if (goodValue(stock.modelYear)) lines.push("", `الموديل: ${stock.modelYear}`);
-    if (goodValue(stock.statement)) lines.push(`الفئة: ${stock.statement}`);
-  }
-
-  if (contactRows.length) {
-    lines.push("", "للتواصل:");
-    contactRows.forEach((row) => {
-      if (row.name && row.phone) lines.push(`• ${row.name} — ${row.phone}`);
-      else if (row.name) lines.push(`• ${row.name}`);
-      else if (row.phone) lines.push(`• ${row.phone}`);
-    });
-  }
-
-  // Price is intentionally the final commercial block in the copy so it can be
-  // pasted into Haraj exactly as requested. The price remains the real website
-  // price snapshot; no discount amount is invented here.
-  if (formattedPrice) {
-    lines.push("", `السعر شامل الضريبة: ${formattedPrice} ريال`);
-    lines.push("احصل على الخصم والهدايا عند التواصل");
-  }
-
-  const specState = getCompareKeyState(websiteCar);
-  return {
-    adTitle,
-    adText: lines.join("\n").replace(/\n{3,}/g, "\n\n").trim(),
-    specsStatus: specState.status,
-    specsIssue: specState.issue,
-    websitePostId: websiteCar?.postId,
-    websiteVehicleId: websiteCar?.vehicleId || "",
-    websiteCompareKey: websiteCar?.compareKey || "",
-    websiteCompareKeyStatus: websiteCar?.compareKeyStatus || "unavailable",
-    websiteCompareKeyFound: Boolean(websiteCar?.compareKeyFound),
-    websiteInteriorSpecsCount: websiteCar ? uniqueFeatures(websiteCar.interiorSpecs).length : 0,
-    websiteExteriorSpecsCount: websiteCar ? uniqueFeatures(websiteCar.exteriorSpecs).length : 0,
-    websiteSafetySpecsCount: websiteCar ? uniqueFeatures(websiteCar.safetySpecs).length : 0,
-    websitePermalink: websiteCar?.permalink || "",
-    websitePrice: websiteCar?.price || 0,
-  };
+function contactSection(contacts: AgentContactSnapshot[]) {
+  const groups = new Map<string, AgentContactSnapshot[]>();
+  contacts.forEach((contact) => {
+    const branch = clean(contact.branchName) || "المناديب";
+    if (!groups.has(branch)) groups.set(branch, []);
+    groups.get(branch)!.push(contact);
+  });
+  const result = ["للتواصل:", RULE];
+  groups.forEach((agents, branch) => {
+    result.push(`(${branch})`);
+    agents.forEach((agent) => result.push(`${clean(agent.name)} ـــــــــــــــ ${clean(agent.phone)}`));
+    result.push(RULE);
+  });
+  return result;
 }
 
-/**
- * Builds one listing from multiple trims. Each trim keeps its own CompareKey
- * features and actual website price; nothing is borrowed from another trim.
- */
-function buildCombinedAdCopy(
-  entries: Array<{ stock: StockGroup; websiteCar: WebsiteCarData | null }>,
-  agentType: AgentType,
-  contactAgents: AgentContactSnapshot[] = [],
-) {
-  const { stock: primary } = entries[0];
-  const label = [goodValue(primary.carName), goodValue(primary.modelYear)].filter(Boolean).join(" ");
-  const adTitle = agentType === "installment"
-    ? buildInstallmentTitle(primary)
-    : `${label} | فئات متعددة متوفرة`;
-  const lines: string[] = [label, "", "متوفرة الآن", "", `الموديل: ${primary.modelYear}`, "", "الفئات المتوفرة:"];
+function makeAdCopy(entries: Array<{ stock: StockGroup; websiteCar: WebsiteCarData | null }>, contacts: AgentContactSnapshot[]) {
+  const carName = goodValue(entries[0].stock.carName);
+  const years = [...new Set(entries.map(({ stock }) => goodValue(stock.modelYear)).filter(Boolean))].sort();
+  const title = `${carName} ${years.join(" / ")}`.trim();
+  const allFeatures = uniqueFeatures(entries.flatMap(({ websiteCar }) => websiteCar ? [
+    ...buildBaseSpecLines(websiteCar), ...websiteCar.interiorSpecs,
+    ...websiteCar.exteriorSpecs, ...websiteCar.safetySpecs,
+  ] : []));
+  const lines = [title, "", ...allFeatures.map((feature) => `* ${feature}`), "", RULE];
   entries.forEach(({ stock, websiteCar }) => {
-    lines.push(`• ${stock.statement}`);
+    const price = formatPrice(Number(websiteCar?.price || 0));
+    const variantName = [goodValue(stock.statement), goodValue(stock.modelYear)].filter(Boolean).join(" - ");
+    lines.push(`${variantName} ................. ( ${price || "السعر غير متوفر"}${price ? " ريال" : ""} )`);
   });
-
-  for (const [index, { stock, websiteCar }] of entries.entries()) {
-    lines.push("", `الفئة ${index + 1}: ${stock.statement}`);
-    if (websiteCar) {
-      const specs = buildBaseSpecLines(websiteCar);
-      if (specs.length) lines.push("", "المواصفات الرئيسية:", ...specs.map((line) => `• ${line}`));
-      const blocks = [
-        categoryBlock("المواصفات الداخلية", websiteCar.interiorSpecs),
-        categoryBlock("المواصفات الخارجية", websiteCar.exteriorSpecs),
-        categoryBlock("مواصفات الأمان", websiteCar.safetySpecs),
-      ].filter(Boolean);
-      blocks.forEach((block) => lines.push("", block));
-      const price = formatPrice(websiteCar.price);
-      if (price) lines.push("", `سعر فئة ${stock.statement} شامل الضريبة: ${price} ريال`);
-    }
-  }
-
-  const contacts = (Array.isArray(contactAgents) ? contactAgents : [])
-    .map((row) => ({ name: clean(row.name), phone: clean(row.phone) }))
-    .filter((row) => row.name || row.phone);
-  if (contacts.length) {
-    lines.push("", "للتواصل:");
-    contacts.forEach((row) => lines.push(`• ${[row.name, row.phone].filter(Boolean).join(" — ")}`));
-  }
-  lines.push("", "احصل على الخصم والهدايا عند التواصل");
-
+  lines.push("السعر شامل ضريبة القيمة المضافة", RULE, ...contactSection(contacts), ...CLOSING);
   const issues = entries.flatMap(({ stock, websiteCar }) => {
     const state = getCompareKeyState(websiteCar);
-    return state.issue ? [`${stock.statement}: ${state.issue}`] : [];
+    return state.issue ? [`${stock.statement} ${stock.modelYear}: ${state.issue}`] : [];
   });
   const statuses = entries.map(({ websiteCar }) => getCompareKeyState(websiteCar).status);
   const specsStatus: SpecsStatus = statuses.includes("missing") ? "missing" : statuses.includes("partial") ? "partial" : "matched";
-  const prices = entries.map(({ websiteCar }) => Number(websiteCar?.price || 0)).filter((price) => price > 0);
-  const firstCar = entries[0].websiteCar;
-
+  const first = entries[0].websiteCar;
+  const prices = entries.map(({ websiteCar }) => Number(websiteCar?.price || 0)).filter((v) => v > 0);
   return {
-    adTitle,
+    adTitle: title,
     adText: lines.join("\n").replace(/\n{3,}/g, "\n\n").trim(),
     specsStatus,
     specsIssue: issues.join(" | "),
-    websitePostId: firstCar?.postId,
-    websiteVehicleId: firstCar?.vehicleId || "",
-    websiteCompareKey: firstCar?.compareKey || "",
-    websiteCompareKeyStatus: firstCar?.compareKeyStatus || "unavailable",
-    websiteCompareKeyFound: Boolean(firstCar?.compareKeyFound),
-    websiteInteriorSpecsCount: entries.reduce((sum, { websiteCar }) => sum + (websiteCar ? uniqueFeatures(websiteCar.interiorSpecs).length : 0), 0),
-    websiteExteriorSpecsCount: entries.reduce((sum, { websiteCar }) => sum + (websiteCar ? uniqueFeatures(websiteCar.exteriorSpecs).length : 0), 0),
-    websiteSafetySpecsCount: entries.reduce((sum, { websiteCar }) => sum + (websiteCar ? uniqueFeatures(websiteCar.safetySpecs).length : 0), 0),
-    websitePermalink: firstCar?.permalink || "",
-    // Compatibility with existing overview/readiness widgets; price for each
-    // trim is also frozen separately in vehicleVariants below.
+    websitePostId: first?.postId,
+    websiteVehicleId: first?.vehicleId || "",
+    websiteCompareKey: first?.compareKey || "",
+    websiteCompareKeyStatus: first?.compareKeyStatus || "unavailable",
+    websiteCompareKeyFound: Boolean(first?.compareKeyFound),
+    websiteInteriorSpecsCount: entries.reduce((n, x) => n + uniqueFeatures(x.websiteCar?.interiorSpecs || []).length, 0),
+    websiteExteriorSpecsCount: entries.reduce((n, x) => n + uniqueFeatures(x.websiteCar?.exteriorSpecs || []).length, 0),
+    websiteSafetySpecsCount: entries.reduce((n, x) => n + uniqueFeatures(x.websiteCar?.safetySpecs || []).length, 0),
+    websitePermalink: first?.permalink || "",
     websitePrice: prices.length ? Math.min(...prices) : 0,
   };
+}
+
+export function buildAdCopy(stock: StockGroup, websiteCar: WebsiteCarData | null, settings: PublishingSettings,
+  advertiserName?: string, agentName?: string, agentPhone?: string, agentType: AgentType = "cash", contactAgents?: AgentContactSnapshot[]) {
+  void settings; void advertiserName; void agentType;
+  const contacts = contactAgents?.length ? contactAgents : [{ agentId: "", name: clean(agentName), phone: clean(agentPhone) }];
+  return makeAdCopy([{ stock, websiteCar }], contacts);
+}
+
+function buildCombinedAdCopy(entries: Array<{ stock: StockGroup; websiteCar: WebsiteCarData | null }>,
+  agentType: AgentType, contactAgents: AgentContactSnapshot[] = []) {
+  void agentType;
+  return makeAdCopy(entries, contactAgents);
 }
 
 export function enrichAssignmentsWithAdCopy<T extends Omit<HarajAd, "id">>(
@@ -344,7 +265,7 @@ export function enrichAssignmentsWithAdCopy<T extends Omit<HarajAd, "id">>(
           key: variant.vehicleKey,
           carName: assignment.carName,
           statement: variant.statement,
-          modelYear: assignment.modelYear,
+          modelYear: variant.modelYear || assignment.modelYear,
           statusName: "متاح للبيع",
           quantity: variant.stockQtySnapshot,
         };
@@ -356,6 +277,7 @@ export function enrichAssignmentsWithAdCopy<T extends Omit<HarajAd, "id">>(
         vehicleVariants: entries.map(({ stock: row, websiteCar }) => ({
           vehicleKey: row.key,
           statement: row.statement,
+          modelYear: row.modelYear,
           stockQtySnapshot: row.quantity,
           websitePrice: websiteCar?.price || 0,
           websitePostId: websiteCar?.postId || 0,

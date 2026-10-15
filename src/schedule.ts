@@ -26,7 +26,7 @@ export function getPlanDays(planStart: string, planEnd: string) {
   const rows: Array<{ name: string; key: string; index: number }> = [];
   const cursor = new Date(start); let index = 0;
   while (cursor <= end && index < 14) { rows.push({ name: DAY_NAME_BY_JS_INDEX[cursor.getDay()], key: dateKey(cursor), index }); cursor.setDate(cursor.getDate() + 1); index += 1; }
-  return rows;
+  return rows.filter((day) => parseDateKey(day.key).getDay() !== 5);
 }
 
 /** Friday -> next Saturday-Friday. Any other day -> tomorrow-coming Friday. */
@@ -41,13 +41,15 @@ export function getSuggestedPlanWindow(value: Date | string = new Date()) {
   return { planStart, planEnd, weekStart: getWeekStartKey(planStart), isFridayPreparation: today.getDay() === 5 };
 }
 
-/** Automatic schedule: start today and continue through the coming Friday. */
+/** Automatic publishing is a complete Saturday-to-Thursday cycle; Friday is excluded. */
 export function getAutomaticPlanWindow(value: Date | string = new Date()) {
   const today = typeof value === "string" ? parseDateKey(value) : new Date(value);
   today.setHours(12, 0, 0, 0);
-  const end = new Date(today);
-  end.setDate(end.getDate() + ((5 - today.getDay() + 7) % 7));
-  const planStart = dateKey(today);
+  const start = new Date(today);
+  start.setDate(start.getDate() + ((6 - start.getDay() + 7) % 7));
+  const end = new Date(start);
+  end.setDate(end.getDate() + 5);
+  const planStart = dateKey(start);
   const planEnd = dateKey(end);
   return { planStart, planEnd, weekStart: getWeekStartKey(planStart), isFridayPreparation: today.getDay() === 5 };
 }
@@ -158,25 +160,9 @@ function normalizeVehiclePart(value: string) {
     .replace(/ة/g, "ه").replace(/\s+/g, " ").trim();
 }
 
-/**
- * The statement also contains technical differences beyond the trim (e.g.
- * 1500cc vs 2000cc, double vs single drivetrain). Never merge those.
- * Without an explicit engine size it is safer to keep the stock item alone.
- */
+/** All years and statements of the same named car share a single automatic listing. */
 export function getAutomaticVariantGroupKey(vehicle: StockGroup) {
-  const statement = normalizeVehiclePart(vehicle.statement);
-  const cc = statement.match(/(?:^|\D)(\d{3,4})\s*(?:سي\s*سي|سيسي|cc)(?=\W|$)/i);
-  const liters = statement.match(/(?:^|\D)(\d(?:[.,]\d+)?)\s*(?:لتر|liter|litre|l)(?=\W|$)/i);
-  const engine = cc ? String(Number(cc[1])) : liters ? String(Math.round(Number(liters[1].replace(",", ".")) * 1000)) : "";
-  if (!engine) return `single:${vehicle.key}`;
-
-  const drivetrain = /(?:بدون\s*دبل|4\s*x\s*2|2wd|دفع\s*امامي|دفع\s*خلفي)/i.test(statement) ? "2wd"
-    : /(?:دبل|4\s*x\s*4|4wd|awd|دفع\s*رباعي)/i.test(statement) ? "4wd" : "";
-  const seats = statement.match(/(\d+)\s*(?:ركاب|مقاعد|مقعد)/)?.[1] || "";
-  const gearbox = /(?:قير\s*عادي|يدوي|manual)/i.test(statement) ? "manual"
-    : /(?:اوتوماتيك|اتوماتيك|قير\s*اوتو|automatic)/i.test(statement) ? "automatic" : "";
-  const fuel = /ديزل|diesel/i.test(statement) ? "diesel" : /بنزين|petrol|gasoline/i.test(statement) ? "petrol" : "";
-  return [normalizeVehiclePart(vehicle.carName), normalizeVehiclePart(vehicle.modelYear), engine, drivetrain, seats, gearbox, fuel].join("|");
+  return normalizeVehiclePart(vehicle.carName) || `single:${vehicle.key}`;
 }
 
 function buildVehicleTargets(vehicles: StockGroup[], existingAds: HarajAd[], startCycle: number, requested: number, mergeVariants: boolean): VehicleTarget[] {
@@ -297,11 +283,12 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
       ...(target.vehicles.length > 1 ? { vehicleVariants: target.vehicles.map((variant) => ({
         vehicleKey: variant.key,
         statement: variant.statement,
+        modelYear: variant.modelYear,
         stockQtySnapshot: variant.quantity,
       })) } : {}),
       carName: vehicle.carName,
-      statement: target.vehicles.map((variant) => variant.statement).join(" | "),
-      modelYear: vehicle.modelYear,
+      statement: [...new Set(target.vehicles.map((variant) => variant.statement))].join(" | "),
+      modelYear: [...new Set(target.vehicles.map((variant) => variant.modelYear))].join(" / "),
       stockQtySnapshot: target.vehicles.reduce((sum, variant) => sum + variant.quantity, 0),
       accountId: branchId,
       branchId,
@@ -311,6 +298,7 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
       agentTypeSnapshot: slot.agent.agentType === "installment" ? "installment" : "cash",
       contactAgentsSnapshot: rotateAgents(contactAgents, existingRotationOffset + index).map((agent) => ({
         agentId: agent.id,
+        branchName: branchById.get(String(agent.accountId || ""))?.name || agent.branchName || "",
         name: String(agent.name || "").trim(),
         phone: String(agent.phone || "").trim(),
       })),
