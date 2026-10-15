@@ -124,9 +124,7 @@ export function validatePublishingSetup(settings: PublishingSettings, agents: Ag
   if (!dailyLimit) return "حد حساب حراج اليومي يجب أن يكون أكبر من صفر.";
   const eligibleAgents = getEligiblePublishingAgents(agents, branches);
   if (!eligibleAgents.length) return "لا يوجد مندوب نشط مرتبط بفرع نشط لتوزيع الإعلانات عليه.";
-  const contactAgents = getActiveContactAgents(agents);
-  if (!contactAgents.length) return "لا يوجد مندوب نشط ببيانات تواصل صالحة لإضافتها داخل الإعلانات.";
-  const missingContact = contactAgents.filter((agent) => !String(agent.name || "").trim() || !String(agent.phone || "").trim());
+  const missingContact = eligibleAgents.filter((agent) => !String(agent.name || "").trim() || !String(agent.phone || "").trim());
   if (missingContact.length) return `بيانات التواصل ناقصة للمناديب النشطين: ${missingContact.map((agent) => agent.name || agent.id).join("، ")}.`;
   return "";
 }
@@ -223,7 +221,6 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
   const setupIssue = validatePublishingSetup(settings, agents, branches);
   if (setupIssue) throw new Error(setupIssue);
   const eligibleAgents = getEligiblePublishingAgents(agents, branches);
-  const contactAgents = getActiveContactAgents(agents);
   const branchById = new Map(branches.map((branch) => [branch.id, branch]));
 
   const uniqueVehicleMap = new Map<string, StockGroup>();
@@ -269,7 +266,6 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
 
   const weekStart = getWeekStartKey(planStart);
   const planId = `plan-${planStart}-${planEnd}-${Date.now()}`;
-  const existingRotationOffset = assignmentHistory.length;
 
   return vehicleTargets.map((target, index): PublishingAssignmentDraft => {
     const vehicle = target.vehicles[0];
@@ -296,12 +292,12 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
       agentNameSnapshot: String(slot.agent.name || "").trim(),
       agentPhoneSnapshot: String(slot.agent.phone || "").trim(),
       agentTypeSnapshot: slot.agent.agentType === "installment" ? "installment" : "cash",
-      contactAgentsSnapshot: rotateAgents(contactAgents, existingRotationOffset + index).map((agent) => ({
-        agentId: agent.id,
-        branchName: branchById.get(String(agent.accountId || ""))?.name || agent.branchName || "",
-        name: String(agent.name || "").trim(),
-        phone: String(agent.phone || "").trim(),
-      })),
+      contactAgentsSnapshot: [{
+        agentId: slot.agent.id,
+        branchName: branch.name || slot.agent.branchName || "",
+        name: String(slot.agent.name || "").trim(),
+        phone: String(slot.agent.phone || "").trim(),
+      }],
       agentSequence: slot.agentSequence,
       harajAccountName: accountName,
       advertiserName: getBranchAdvertiserName(branch, accountName),

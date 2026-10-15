@@ -74,7 +74,7 @@ export type HarajAd = {
   agentNameSnapshot?: string;
   agentPhoneSnapshot?: string;
   agentTypeSnapshot?: AgentType;
-  /** All active reps frozen into the ad contact block, rotated per ad. */
+  /** Assigned rep only; older records may contain historical multi-rep snapshots. */
   contactAgentsSnapshot?: AgentContactSnapshot[];
   /** Global round-robin sequence for the assigned rep. */
   agentSequence?: number;

@@ -1,4 +1,5 @@
 import { adBranchId, formatDateArabic, formatPlanRange, getPlanDays, isPublished } from "./schedule";
+import { getAssignedAgentAdText } from "./ad-copy";
 import type { Agent, HarajAccount, HarajAd, PublishingSettings } from "./types";
 
 const POLICIES = [
@@ -66,7 +67,7 @@ function normalizeAdTextForWord(value: unknown, price: string) {
 
 function getWordAdText(ad: HarajAd) {
   // Each category already carries its real website price in the combined body.
-  return String(ad.adText || "").trim();
+  return getAssignedAgentAdText(ad);
 }
 
 function multilineParagraph(text: string, options: { size?: number; after?: number; before?: number } = {}) {

@@ -6,19 +6,32 @@ function clean(value: unknown) {
 
 
 export function getAdContactSnapshots(ad: Pick<HarajAd, "contactAgentsSnapshot" | "agentId" | "agentNameSnapshot" | "agentPhoneSnapshot">) {
-  const rows = Array.isArray(ad.contactAgentsSnapshot) ? ad.contactAgentsSnapshot : [];
-  const cleaned = rows
-    .map((row) => ({ agentId: clean(row?.agentId), name: clean(row?.name), phone: clean(row?.phone) }))
-    .filter((row) => row.name || row.phone);
-  if (cleaned.length) return cleaned;
-  const fallbackName = clean(ad.agentNameSnapshot);
-  const fallbackPhone = clean(ad.agentPhoneSnapshot);
-  return fallbackName || fallbackPhone ? [{ agentId: clean(ad.agentId), name: fallbackName, phone: fallbackPhone }] : [];
+  const assignedId = clean(ad.agentId);
+  const snapshot = (Array.isArray(ad.contactAgentsSnapshot) ? ad.contactAgentsSnapshot : [])
+    .find((row) => assignedId && clean(row?.agentId) === assignedId);
+  const name = clean(ad.agentNameSnapshot) || clean(snapshot?.name);
+  const phone = clean(ad.agentPhoneSnapshot) || clean(snapshot?.phone);
+  return name || phone ? [{ agentId: assignedId, name, phone }] : [];
 }
 
 export function areAdContactsReady(ad: Pick<HarajAd, "contactAgentsSnapshot" | "agentId" | "agentNameSnapshot" | "agentPhoneSnapshot">) {
   const rows = getAdContactSnapshots(ad);
-  return rows.length > 0 && rows.every((row) => Boolean(row.name && row.phone));
+  return rows.length === 1 && Boolean(rows[0].name && rows[0].phone);
+}
+
+/** Fix historical generated ads in preview, copying and Word without mutating Firestore. */
+export function getAssignedAgentAdText(ad: HarajAd): string {
+  const source = String(ad.adText || "").trim();
+  const [contact] = getAdContactSnapshots(ad);
+  if (!contact?.name || !contact?.phone) return source;
+  const contactLine = `للتواصل:\n${"ــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــ"}\n${contact.name} ـــــــــــــــ ${contact.phone}\n${"ــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــ"}`.replace(/\\n/g, "\n");
+  const start = source.lastIndexOf("للتواصل:");
+  if (start < 0) return source;
+  const closing = source.indexOf("* (مواعيد العمل) *", start);
+  if (closing < 0) return source;
+  const between = source.slice(start, closing);
+  if (!between.includes("ــــــــ") && !between.includes(contact.name)) return source;
+  return `${source.slice(0, start)}${contactLine}\n${source.slice(closing)}`.replace(/\\n/g, "\n").trim();
 }
 
 /** One missing variant price must prevent publishing the entire combined ad. */
@@ -182,19 +195,8 @@ const CLOSING = [
 ];
 
 function contactSection(contacts: AgentContactSnapshot[]) {
-  const groups = new Map<string, AgentContactSnapshot[]>();
-  contacts.forEach((contact) => {
-    const branch = clean(contact.branchName) || "المناديب";
-    if (!groups.has(branch)) groups.set(branch, []);
-    groups.get(branch)!.push(contact);
-  });
-  const result = ["للتواصل:", RULE];
-  groups.forEach((agents, branch) => {
-    result.push(`(${branch})`);
-    agents.forEach((agent) => result.push(`${clean(agent.name)} ـــــــــــــــ ${clean(agent.phone)}`));
-    result.push(RULE);
-  });
-  return result;
+  const contact = contacts[0];
+  return ["للتواصل:", RULE, `${clean(contact?.name)} ـــــــــــــــ ${clean(contact?.phone)}`, RULE];
 }
 
 function makeAdCopy(entries: Array<{ stock: StockGroup; websiteCar: WebsiteCarData | null }>, contacts: AgentContactSnapshot[]) {
@@ -273,7 +275,7 @@ export function enrichAssignmentsWithAdCopy<T extends Omit<HarajAd, "id">>(
       });
       return {
         ...assignment,
-        ...buildCombinedAdCopy(entries, assignment.agentTypeSnapshot || "cash", assignment.contactAgentsSnapshot),
+        ...buildCombinedAdCopy(entries, assignment.agentTypeSnapshot || "cash", getAdContactSnapshots(assignment)),
         vehicleVariants: entries.map(({ stock: row, websiteCar }) => ({
           vehicleKey: row.key,
           statement: row.statement,
@@ -304,7 +306,7 @@ export function enrichAssignmentsWithAdCopy<T extends Omit<HarajAd, "id">>(
         assignment.agentNameSnapshot,
         assignment.agentPhoneSnapshot,
         assignment.agentTypeSnapshot || "cash",
-        assignment.contactAgentsSnapshot,
+        getAdContactSnapshots(assignment),
       ),
     };
   });

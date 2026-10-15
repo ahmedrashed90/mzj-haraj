@@ -1,6 +1,6 @@
 import { Check, Copy, LinkSimple, WarningCircle } from "@phosphor-icons/react";
 import { useState } from "react";
-import { areAdContactsReady, areAdPricesReady, getAdContactSnapshots } from "../ad-copy";
+import { areAdContactsReady, areAdPricesReady, getAdContactSnapshots, getAssignedAgentAdText } from "../ad-copy";
 import type { HarajAd } from "../types";
 
 function fallbackCopy(text: string) {
@@ -41,9 +41,11 @@ export function normalizeAdTextForPublishing(value: unknown, price: string) {
 
 export function getPublishingAdText(ad: HarajAd) {
   // Combined ads have one price per trim, so never replace them with one price.
-  if (ad.vehicleVariants && ad.vehicleVariants.length > 1) return clean(ad.adText);
+  if (ad.vehicleVariants && ad.vehicleVariants.length > 1) return getAssignedAgentAdText(ad);
   const price = formatPublishingPrice(Number(ad.websitePrice || 0));
-  return normalizeAdTextForPublishing(ad.adText, price);
+  const body = getAssignedAgentAdText(ad);
+  if (body.includes("السعر شامل ضريبة القيمة المضافة")) return body;
+  return normalizeAdTextForPublishing(body, price);
 }
 
 export function getPublishingPrice(ad: HarajAd) {
@@ -91,7 +93,7 @@ export function AdCopyCard({ ad, compact = false }: { ad: HarajAd; compact?: boo
   if (!title) issues.push("عنوان إعلان حراج غير جاهز.");
   if (!compareKeyReady) issues.push(ad.specsIssue || (partial ? "CompareKey مرتبط لكن المواصفات غير مكتملة." : "المواصفات غير مرتبطة بـ CompareKey كامل."));
   if (!priceReady) issues.push("السعر غير متوفر في بيانات سيارة الموقع، لذلك الإعلان غير جاهز للنشر.");
-  if (!contactReady) issues.push("بيانات أسماء وأرقام المناديب النشطين غير مكتملة داخل الإعلان.");
+  if (!contactReady) issues.push("بيانات اسم ورقم جوال المندوب المكلف غير مكتملة داخل الإعلان.");
 
   return <div className={`ad-copy-card ${compact ? "compact-copy" : ""}`}>
     <div className="haraj-title-copy">
@@ -105,12 +107,12 @@ export function AdCopyCard({ ad, compact = false }: { ad: HarajAd; compact?: boo
     </div>
 
     <div className="ad-copy-actions">
-      <button className="secondary-button compact" disabled={!ready} onClick={() => void copyValue("ad", text)} title={!ready ? "يلزم CompareKey كامل + السعر + بيانات جميع المناديب النشطين" : "نسخ صيغة الإعلان كاملة"}>
+      <button className="secondary-button compact" disabled={!ready} onClick={() => void copyValue("ad", text)} title={!ready ? "يلزم CompareKey كامل + السعر + بيانات المندوب المكلف" : "نسخ صيغة الإعلان كاملة"}>
         {copiedKey === "ad" ? <Check size={16} /> : <Copy size={16} />}{copiedKey === "ad" ? "تم النسخ" : "نسخ صيغة الإعلان"}
       </button>
       {ad.websitePermalink ? <a className="icon-button" href={ad.websitePermalink} target="_blank" rel="noreferrer" title="فتح صفحة السيارة بالموقع"><LinkSimple size={16} /></a> : null}
       <span className={`specs-status ${ready ? "matched" : partial ? "partial" : "missing"}`}>
-        {ready ? `جاهز للنشر · ${contactRows.length} مناديب` : compareKeyReady ? "بيانات النشر ناقصة" : partial ? "CompareKey جزئي" : "CompareKey غير جاهز"}
+        {ready ? "جاهز للنشر · مندوب واحد" : compareKeyReady ? "بيانات النشر ناقصة" : partial ? "CompareKey جزئي" : "CompareKey غير جاهز"}
       </span>
     </div>
     {issues.length ? <div className="copy-warning"><WarningCircle size={15} /><div>{issues.map((issue) => <span key={issue}>{issue}</span>)}</div></div> : null}

@@ -1,0 +1,1 @@
+v1.19.1: Contact block is assigned salesperson only. New schedule snapshots one agent; historic ads are corrected on preview/copy/Word without modifying stored data. Saturday-Thursday and model/trim grouping preserved.
