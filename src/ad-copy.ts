@@ -22,16 +22,35 @@ export function areAdContactsReady(ad: Pick<HarajAd, "contactAgentsSnapshot" | "
     && Boolean(clean(ad.agentNameSnapshot) && clean(ad.agentPhoneSnapshot));
 }
 
-/** Show the assigned rep first, followed by the complete saved branch lists. */
+/** One publishing format for saved ads, preview, copy and Word export. */
 export function getAssignedAgentAdText(ad: HarajAd): string {
   const source = String(ad.adText || "").trim();
-  const start = source.lastIndexOf("للتواصل:");
-  if (start < 0) return source;
-  const closing = source.indexOf("* (مواعيد العمل) *", start);
-  if (closing < 0) return source;
+  if (!source) return "";
   const contacts = getAdContactSnapshots(ad);
-  const replacement = contactSection(contacts, ad.agentNameSnapshot, ad.agentPhoneSnapshot).join("\n");
-  return `${source.slice(0, start)}${replacement}\n${source.slice(closing)}`.trim();
+  const block = contactSection(contacts, ad.agentNameSnapshot, ad.agentPhoneSnapshot).join("\n");
+  // The current generator already writes the correct vehicle/trim/price sections.
+  if (source.includes("السعر شامل ضريبة القيمة المضافة") && source.includes("* (مواعيد العمل) *")) {
+    const start = source.lastIndexOf("للتواصل:");
+    const end = source.indexOf("* (مواعيد العمل) *", start);
+    if (start >= 0 && end > start) return `${source.slice(0, start)}${block}\n${source.slice(end)}`.trim();
+  }
+  // Older saved ads retain their car specifications; reformat without inventing features.
+  const rawLines = source.split(/\r?\n/).map((row) => row.trim());
+  const title = clean(ad.carName) + (clean(ad.modelYear) ? ` ${clean(ad.modelYear)}` : "");
+  const startSpecs = rawLines.findIndex((row) => row === "المواصفات الرئيسية:");
+  const endSpecs = rawLines.findIndex((row) => row === "للتواصل:");
+  const extracted = startSpecs >= 0 ? rawLines.slice(startSpecs + 1, endSpecs > startSpecs ? endSpecs : undefined)
+    : rawLines.filter((row) => row.startsWith("* ") || row.startsWith("• "));
+  const features = uniqueFeatures(extracted.filter((row) => row.startsWith("• ") || row.startsWith("* ")).map((row) => row.slice(2)));
+  const variants = Array.isArray(ad.vehicleVariants) && ad.vehicleVariants.length
+    ? ad.vehicleVariants : [{ statement: ad.statement, modelYear: ad.modelYear, websitePrice: ad.websitePrice }];
+  const priceLines = variants.map((variant) => {
+    const label = [goodValue(variant.statement), goodValue(variant.modelYear)].filter(Boolean).join(" - ");
+    const price = formatPrice(Number(variant.websitePrice || 0));
+    return `${label} ................. ( ${price ? `${price} ريال` : "السعر غير متوفر"} )`;
+  });
+  return [title.trim(), "", ...features.map((row) => `* ${row}`), "", RULE, ...priceLines,
+    "السعر شامل ضريبة القيمة المضافة", RULE, block, ...CLOSING].join("\n").trim();
 }
 
 /** One missing variant price must prevent publishing the entire combined ad. */
@@ -220,11 +239,21 @@ function makeAdCopy(entries: Array<{ stock: StockGroup; websiteCar: WebsiteCarDa
   const carName = goodValue(entries[0].stock.carName);
   const years = [...new Set(entries.map(({ stock }) => goodValue(stock.modelYear)).filter(Boolean))].sort();
   const title = `${carName} ${years.join(" / ")}`.trim();
-  const allFeatures = uniqueFeatures(entries.flatMap(({ websiteCar }) => websiteCar ? [
+  const featureSets = entries.map(({ websiteCar }) => websiteCar ? uniqueFeatures([
     ...buildBaseSpecLines(websiteCar), ...websiteCar.interiorSpecs,
     ...websiteCar.exteriorSpecs, ...websiteCar.safetySpecs,
-  ] : []));
-  const lines = [title, "", ...allFeatures.map((feature) => `* ${feature}`), "", RULE];
+  ]) : []);
+  const commonFeatures = featureSets.length && featureSets.every((set) => set.length)
+    ? featureSets[0].filter((feature) => featureSets.every((set) => set.some((other) => normalizeArabic(other) === normalizeArabic(feature)))) : [];
+  const commonKeys = new Set(commonFeatures.map(normalizeArabic));
+  const lines = [title, "", ...commonFeatures.map((feature) => `* ${feature}`)];
+  entries.forEach(({ stock }, index) => {
+    const extra = featureSets[index].filter((feature) => !commonKeys.has(normalizeArabic(feature)));
+    if (extra.length) {
+      lines.push("", `مواصفات ${[stock.statement, stock.modelYear].filter(Boolean).join(" - ")}:`, ...extra.map((feature) => `* ${feature}`));
+    }
+  });
+  lines.push("", RULE);
   entries.forEach(({ stock, websiteCar }) => {
     const price = formatPrice(Number(websiteCar?.price || 0));
     const variantName = [goodValue(stock.statement), goodValue(stock.modelYear)].filter(Boolean).join(" - ");
