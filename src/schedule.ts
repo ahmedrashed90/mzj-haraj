@@ -292,12 +292,12 @@ export function buildPublishingAssignments({ vehicles, planStart, planEnd, cover
       agentNameSnapshot: String(slot.agent.name || "").trim(),
       agentPhoneSnapshot: String(slot.agent.phone || "").trim(),
       agentTypeSnapshot: slot.agent.agentType === "installment" ? "installment" : "cash",
-      contactAgentsSnapshot: [{
-        agentId: slot.agent.id,
-        branchName: branch.name || slot.agent.branchName || "",
-        name: String(slot.agent.name || "").trim(),
-        phone: String(slot.agent.phone || "").trim(),
-      }],
+      contactAgentsSnapshot: rotateAgents(contactAgents, existingRotationOffset + index).map((agent) => ({
+        agentId: agent.id,
+        branchName: branchById.get(String(agent.accountId || ""))?.name || agent.branchName || "",
+        name: String(agent.name || "").trim(),
+        phone: String(agent.phone || "").trim(),
+      })),
       agentSequence: slot.agentSequence,
       harajAccountName: accountName,
       advertiserName: getBranchAdvertiserName(branch, accountName),

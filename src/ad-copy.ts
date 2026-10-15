@@ -6,32 +6,32 @@ function clean(value: unknown) {
 
 
 export function getAdContactSnapshots(ad: Pick<HarajAd, "contactAgentsSnapshot" | "agentId" | "agentNameSnapshot" | "agentPhoneSnapshot">) {
-  const assignedId = clean(ad.agentId);
-  const snapshot = (Array.isArray(ad.contactAgentsSnapshot) ? ad.contactAgentsSnapshot : [])
-    .find((row) => assignedId && clean(row?.agentId) === assignedId);
-  const name = clean(ad.agentNameSnapshot) || clean(snapshot?.name);
-  const phone = clean(ad.agentPhoneSnapshot) || clean(snapshot?.phone);
-  return name || phone ? [{ agentId: assignedId, name, phone }] : [];
+  const rows = Array.isArray(ad.contactAgentsSnapshot) ? ad.contactAgentsSnapshot : [];
+  const cleaned = rows.map((row) => ({
+    agentId: clean(row?.agentId), name: clean(row?.name), phone: clean(row?.phone), branchName: clean(row?.branchName),
+  })).filter((row) => row.name || row.phone);
+  if (cleaned.length) return cleaned;
+  const name = clean(ad.agentNameSnapshot);
+  const phone = clean(ad.agentPhoneSnapshot);
+  return name || phone ? [{ agentId: clean(ad.agentId), name, phone, branchName: "" }] : [];
 }
 
 export function areAdContactsReady(ad: Pick<HarajAd, "contactAgentsSnapshot" | "agentId" | "agentNameSnapshot" | "agentPhoneSnapshot">) {
   const rows = getAdContactSnapshots(ad);
-  return rows.length === 1 && Boolean(rows[0].name && rows[0].phone);
+  return rows.length > 0 && rows.every((row) => Boolean(row.name && row.phone))
+    && Boolean(clean(ad.agentNameSnapshot) && clean(ad.agentPhoneSnapshot));
 }
 
-/** Fix historical generated ads in preview, copying and Word without mutating Firestore. */
+/** Show the assigned rep first, followed by the complete saved branch lists. */
 export function getAssignedAgentAdText(ad: HarajAd): string {
   const source = String(ad.adText || "").trim();
-  const [contact] = getAdContactSnapshots(ad);
-  if (!contact?.name || !contact?.phone) return source;
-  const contactLine = `للتواصل:\n${"ــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــ"}\n${contact.name} ـــــــــــــــ ${contact.phone}\n${"ــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــ"}`.replace(/\\n/g, "\n");
   const start = source.lastIndexOf("للتواصل:");
   if (start < 0) return source;
   const closing = source.indexOf("* (مواعيد العمل) *", start);
   if (closing < 0) return source;
-  const between = source.slice(start, closing);
-  if (!between.includes("ــــــــ") && !between.includes(contact.name)) return source;
-  return `${source.slice(0, start)}${contactLine}\n${source.slice(closing)}`.replace(/\\n/g, "\n").trim();
+  const contacts = getAdContactSnapshots(ad);
+  const replacement = contactSection(contacts, ad.agentNameSnapshot, ad.agentPhoneSnapshot).join("\n");
+  return `${source.slice(0, start)}${replacement}\n${source.slice(closing)}`.trim();
 }
 
 /** One missing variant price must prevent publishing the entire combined ad. */
@@ -194,12 +194,29 @@ const CLOSING = [
   "***(وصلى الله على نبينا محمد وعلى آله وصحبه أجمعين)***",
 ];
 
-function contactSection(contacts: AgentContactSnapshot[]) {
-  const contact = contacts[0];
-  return ["للتواصل:", RULE, `${clean(contact?.name)} ـــــــــــــــ ${clean(contact?.phone)}`, RULE];
+function contactSection(contacts: AgentContactSnapshot[], assignedName?: string, assignedPhone?: string) {
+  const current = contacts.find((row) => clean(row.name) === clean(assignedName)) || contacts[0];
+  const name = clean(assignedName) || clean(current?.name);
+  const phone = clean(assignedPhone) || clean(current?.phone);
+  const result = ["للتواصل:", RULE];
+  if (name || phone) result.push(`${name} ـــــــــــــــ ${phone}`, RULE);
+  const groups = new Map<string, AgentContactSnapshot[]>();
+  contacts.forEach((contact) => {
+    const branch = clean(contact.branchName) || "المناديب";
+    if (!groups.has(branch)) groups.set(branch, []);
+    if (!groups.get(branch)!.some((existing) => existing.agentId === contact.agentId && existing.name === contact.name)) {
+      groups.get(branch)!.push(contact);
+    }
+  });
+  groups.forEach((agents, branch) => {
+    result.push(`(${branch})`);
+    agents.forEach((agent) => result.push(`${clean(agent.name)} ـــــــــــــــ ${clean(agent.phone)}`));
+    result.push(RULE);
+  });
+  return result;
 }
 
-function makeAdCopy(entries: Array<{ stock: StockGroup; websiteCar: WebsiteCarData | null }>, contacts: AgentContactSnapshot[]) {
+function makeAdCopy(entries: Array<{ stock: StockGroup; websiteCar: WebsiteCarData | null }>, contacts: AgentContactSnapshot[], assignedName?: string, assignedPhone?: string) {
   const carName = goodValue(entries[0].stock.carName);
   const years = [...new Set(entries.map(({ stock }) => goodValue(stock.modelYear)).filter(Boolean))].sort();
   const title = `${carName} ${years.join(" / ")}`.trim();
@@ -213,7 +230,7 @@ function makeAdCopy(entries: Array<{ stock: StockGroup; websiteCar: WebsiteCarDa
     const variantName = [goodValue(stock.statement), goodValue(stock.modelYear)].filter(Boolean).join(" - ");
     lines.push(`${variantName} ................. ( ${price || "السعر غير متوفر"}${price ? " ريال" : ""} )`);
   });
-  lines.push("السعر شامل ضريبة القيمة المضافة", RULE, ...contactSection(contacts), ...CLOSING);
+  lines.push("السعر شامل ضريبة القيمة المضافة", RULE, ...contactSection(contacts, assignedName, assignedPhone), ...CLOSING);
   const issues = entries.flatMap(({ stock, websiteCar }) => {
     const state = getCompareKeyState(websiteCar);
     return state.issue ? [`${stock.statement} ${stock.modelYear}: ${state.issue}`] : [];
@@ -244,13 +261,13 @@ export function buildAdCopy(stock: StockGroup, websiteCar: WebsiteCarData | null
   advertiserName?: string, agentName?: string, agentPhone?: string, agentType: AgentType = "cash", contactAgents?: AgentContactSnapshot[]) {
   void settings; void advertiserName; void agentType;
   const contacts = contactAgents?.length ? contactAgents : [{ agentId: "", name: clean(agentName), phone: clean(agentPhone) }];
-  return makeAdCopy([{ stock, websiteCar }], contacts);
+  return makeAdCopy([{ stock, websiteCar }], contacts, agentName, agentPhone);
 }
 
 function buildCombinedAdCopy(entries: Array<{ stock: StockGroup; websiteCar: WebsiteCarData | null }>,
-  agentType: AgentType, contactAgents: AgentContactSnapshot[] = []) {
+  agentType: AgentType, contactAgents: AgentContactSnapshot[] = [], assignedName?: string, assignedPhone?: string) {
   void agentType;
-  return makeAdCopy(entries, contactAgents);
+  return makeAdCopy(entries, contactAgents, assignedName, assignedPhone);
 }
 
 export function enrichAssignmentsWithAdCopy<T extends Omit<HarajAd, "id">>(
@@ -275,7 +292,7 @@ export function enrichAssignmentsWithAdCopy<T extends Omit<HarajAd, "id">>(
       });
       return {
         ...assignment,
-        ...buildCombinedAdCopy(entries, assignment.agentTypeSnapshot || "cash", getAdContactSnapshots(assignment)),
+        ...buildCombinedAdCopy(entries, assignment.agentTypeSnapshot || "cash", getAdContactSnapshots(assignment), assignment.agentNameSnapshot, assignment.agentPhoneSnapshot),
         vehicleVariants: entries.map(({ stock: row, websiteCar }) => ({
           vehicleKey: row.key,
           statement: row.statement,
