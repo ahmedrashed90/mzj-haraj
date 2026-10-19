@@ -180,3 +180,47 @@ export const AD_STATUS_LABELS: Record<AdStatus, string> = {
   needs_fix: "يحتاج تعديل",
   closed: "منتهي",
 };
+
+/** OpenSooq data is separate from Haraj's representatives and Haraj ad collections. */
+export type OpenSooqSettings = {
+  accountName: string;
+  phone: string;
+  dailyTarget: number;
+};
+
+export type OpenSooqMonth = {
+  id: string;
+  /** Monthly quota entered by the account admin, not fetched from OpenSooq. */
+  monthlyLimit: number;
+  /** Baseline active listings OUTSIDE schedules created in this app. */
+  activeCount: number;
+  /** Units reserved when an OpenSooq weekly schedule is created. */
+  reservedCount: number;
+  usedUnitKeys: string[];
+};
+
+export type OpenSooqScheduleRow = {
+  /** Unique within the selected month; reflects a quantity slot, not a chassis number. */
+  id: string;
+  stockKey: string;
+  unitIndex: number;
+  carName: string;
+  statement: string;
+  modelYear: string;
+  scheduledDate: string;
+  order: number;
+  price: number;
+  phone: string;
+  status: "scheduled" | "published";
+  publishedAt?: string;
+};
+
+export type OpenSooqPlan = {
+  id: string;
+  monthKey: string;
+  weekStart: string;
+  planStart: string;
+  planEnd: string;
+  rows: OpenSooqScheduleRow[];
+  createdAt?: string;
+};

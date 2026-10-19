@@ -1,12 +1,13 @@
-import { CalendarDots, CarProfile, ChartPieSlice, ClipboardText, GearSix, ListChecks, SignOut, UsersThree } from "@phosphor-icons/react";
+import { CalendarDots, CarProfile, ChartPieSlice, ClipboardText, GearSix, ListChecks, SignOut, UsersThree, Storefront } from "@phosphor-icons/react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../AuthContext";
 import logo from "../assets/mzj-logo.png";
 
-const APP_VERSION = "v1.17.0";
+const APP_VERSION = "v1.20.0";
 const links = [
   { to: "/", label: "لوحة التحكم", icon: ChartPieSlice },
   { to: "/inventory", label: "مخزون السيارات", icon: CarProfile },
+  { to: "/opensooq", label: "السوق المفتوح", icon: Storefront },
   { to: "/schedule", label: "جدول النشر", icon: CalendarDots },
   { to: "/distribution", label: "توزيع المناديب", icon: ListChecks },
   { to: "/ads", label: "الإعلانات", icon: ClipboardText },
