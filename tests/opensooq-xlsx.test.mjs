@@ -80,3 +80,13 @@ test('ZIP central directory uses a supported stored compression method', () => {
     offset += 46 + view.getUint16(offset + 28, true) + view.getUint16(offset + 30, true) + view.getUint16(offset + 32, true);
   }
 });
+
+test('XLSX bytes are backed by an ordinary ArrayBuffer and can be downloaded as a Blob', async () => {
+  const bytes = buildOpenSooqXlsx(sample, { headers: labels, sheetName: 'Schedule' });
+  assert.ok(bytes.buffer instanceof ArrayBuffer);
+  const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  assert.equal(blob.size, bytes.byteLength);
+  assert.equal(blob.type, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  const roundTrip = new Uint8Array(await blob.arrayBuffer());
+  assert.deepEqual(roundTrip, bytes);
+});

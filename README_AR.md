@@ -1,4 +1,4 @@
-# MZJ Haraj Manager — v1.22.0 FULL
+# MZJ Haraj Manager — v1.22.1 FULL
 
 نسخة كاملة CLEAN مبنية على v1.14.0 مع إزالة نظام فترات النشر بالكامل واعتماد توزيع تلقائي مباشر على جميع المناديب النشطين.
 
@@ -231,3 +231,11 @@ npm run build
 - Both admin exports (all branches or filtered branch) and each branch manager's own export use the same workbook generator.
 - Export reads the existing saved schedule; it does not change ad status, schedule assignments, or the monthly quota.
 - No new npm packages or separate patch are required. Haraj's Word export and publishing workflow remain untouched.
+
+
+## v1.22.1 — تصحيح بناء Vercel (TypeScript)
+
+- إصلاح خطأ `TS2322` في `OpenSooqSchedule.tsx` عند إنشاء ملف Excel بواسطة `Blob`.
+- مصدر الخطأ: النوع العام `Uint8Array<ArrayBufferLike>` لم يكن يضمن أن البيانات تستند إلى `ArrayBuffer` الذي يقبله `BlobPart` في إصدارات TypeScript الحديثة.
+- تم تصحيح نوع الإرجاع في مولّد XLSX نفسه إلى `Uint8Array<ArrayBuffer>` بشكل صريح عبر دوال تجميع البايتات والـ ZIP، دون تحويلات غير آمنة أو نسخ إضافي للملف.
+- لا تغييرات في الجداول أو حساب الرصيد أو صلاحيات مديري الفروع أو بيانات حراج. هذه نسخة سورس كاملة وليست ملف Patch.

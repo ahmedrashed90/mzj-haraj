@@ -157,7 +157,7 @@ function crc32(data: Uint8Array) {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-function concatenate(chunks: Uint8Array[]): Uint8Array {
+function concatenate(chunks: Uint8Array[]): Uint8Array<ArrayBuffer> {
   const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
   const result = new Uint8Array(total);
   let offset = 0;
@@ -165,7 +165,7 @@ function concatenate(chunks: Uint8Array[]): Uint8Array {
   return result;
 }
 
-function zipXml(entries: Array<{ name: string; xml: string }>): Uint8Array {
+function zipXml(entries: Array<{ name: string; xml: string }>): Uint8Array<ArrayBuffer> {
   const local: Uint8Array[] = [];
   const central: Uint8Array[] = [];
   const now = new Date();
@@ -225,7 +225,7 @@ function zipXml(entries: Array<{ name: string; xml: string }>): Uint8Array {
 }
 
 /** Pure workbook builder, also used by automated export tests. */
-export function buildOpenSooqXlsx(sourceRows: OpenSooqExcelRow[], options: OpenSooqExcelOptions): Uint8Array {
+export function buildOpenSooqXlsx(sourceRows: OpenSooqExcelRow[], options: OpenSooqExcelOptions): Uint8Array<ArrayBuffer> {
   if (options.headers.length !== 8) throw new Error("The OpenSooq Excel export requires exactly eight headers.");
   if (!sourceRows.length) throw new Error("Cannot export an empty OpenSooq schedule.");
   const sheetName = options.sheetName.replace(/[\\/?*\[\]:]/g, "").slice(0, 31) || "OpenSooq";

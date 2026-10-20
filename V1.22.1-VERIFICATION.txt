@@ -1,0 +1,36 @@
+MZJ Haraj + OpenSooq v1.22.1 FULL SOURCE
+Source base: MZJ-Haraj-v1.22.0-OPENSOOQ-STYLED-EXCEL-FULL.zip
+
+ROOT CAUSE
+Vercel TypeScript TS2322 in src/components/OpenSooqSchedule.tsx:
+  Type 'Uint8Array<ArrayBufferLike>' is not assignable to type 'BlobPart'.
+The XLSX builder's explicit Uint8Array return annotations used the broad
+ArrayBufferLike backing type, which includes SharedArrayBuffer and does not
+satisfy the stricter BlobPart<ArrayBuffer> constraint.
+
+SOURCE FIX (NO PATCH / NO HOTFIX)
+The XLSX generator now declares the actual backing buffer type explicitly:
+  concatenate(...): Uint8Array<ArrayBuffer>
+  zipXml(...): Uint8Array<ArrayBuffer>
+  buildOpenSooqXlsx(...): Uint8Array<ArrayBuffer>
+All returned bytes come from `new Uint8Array(total)`, which creates a real
+ArrayBuffer-backed typed array. The existing Blob download path is unchanged.
+No unsafe casts, extra byte copies, new dependencies, or build bypasses.
+
+VERIFIED
+- TypeScript 5.8.3 strict DOM typecheck of the real XLSX generator plus a
+  regression harness containing the exact `new Blob([bytes], ...)` expression:
+  PASS, zero type errors.
+- Node test suite: all 17 tests passed (OpenSooq schedules, branch access,
+  XLSX format, data preservation, and ArrayBuffer/Blob round-trip).
+- Original OpenSooq/Haraj quota, branch manager access, saved plans,
+  Firebase rules, and existing exports are not modified by this fix.
+
+ENVIRONMENT LIMITATION
+Full `npm run build` could not run in this container because project npm
+packages are not installed and registry.npmjs.org is unreachable (EAI_AGAIN).
+The build must be run by Vercel after deploying this complete source.
+
+DEPLOYMENT
+Upload/commit the full project from this ZIP to the same Vercel project.
+Do not apply a separate patch or overwrite only the component file.
