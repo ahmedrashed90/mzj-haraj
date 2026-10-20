@@ -1,4 +1,4 @@
-# MZJ Haraj Manager — v1.21.0 FULL
+# MZJ Haraj Manager — v1.22.0 FULL
 
 نسخة كاملة CLEAN مبنية على v1.14.0 مع إزالة نظام فترات النشر بالكامل واعتماد توزيع تلقائي مباشر على جميع المناديب النشطين.
 
@@ -141,7 +141,7 @@ MZJ_HARAJ_BRIDGE_KEY=<SECRET>
 - كل وحدة متاحة من الاستوك تُعرض كسطر إعلان مستقل، ولو تطابق اسم السيارة والبيان والموديل. لا يطبق دمج الفئات في جدول حراج.
 - بيانات الإعلان المختصرة: تاريخ النشر، السيارة، البيان، الموديل، السعر، ورقم التواصل الموحد. لا يُطلب اسم مندوب أو تفاصيل المواصفات.
 - الأسعار تُقرأ من مصدر موقع MZJ، والسعر غير المطابق يُظهر تنبيهًا ويسمح بتعديله قبل تأكيد النشر.
-- لكل جدول حالات «لم يُنشر/تم النشر»، مع تصدير CSV مناسب لبرامج الجداول.
+- لكل جدول حالات «لم يُنشر/تم النشر»، مع تصدير Excel XLSX منسق لبرامج الجداول.
 - يمكن حذف جدول بالكامل واستعادة رصيده ما دام لا يحتوي على إعلان مؤكد النشر.
 - الجداول في `opensooq_plans` منفصلة عن مجموعة `haraj_ads` وعن المناديب.
 - **هام:** عدد «المنشورة في الجداول» يدخل تلقائيًا ضمن الإعلانات النشطة المعروضة، لذلك لا تعِد إضافته إلى خانة «الإعلانات النشطة الحالية قبل جداول النظام»؛ هذا يمنع الحساب المزدوج.
@@ -221,3 +221,13 @@ npm run build
 ```
 
 **تنبيه الاختبار:** يلزم تنفيذ Build ونشر قواعد Firestore على بيئة متصلة بالشبكة لاختبار تسجيل دخول المديرين عمليًا. الاختبارات المحلية تغطي توزيع 7/7 و6/6 و4/3 والحفاظ على بيانات الجدول القديم، لكنها ليست بديلًا عن اختبار صلاحيات Firebase الحقيقية.
+
+
+## v1.22.0 - Styled OpenSooq Excel export
+
+- The OpenSooq export action now downloads a true `.xlsx` workbook rather than CSV. CSV cannot retain colors, font choices, column widths, or frozen headers.
+- Fixed dark navy header with white Tajawal text, Arabic right-to-left sheet, and six rotating pastel day-group colors with distinct separators.
+- Comfortable column widths and row heights, price formatting, true Excel dates, phone numbers as text, status colors, frozen header, filters, and landscape printing.
+- Both admin exports (all branches or filtered branch) and each branch manager's own export use the same workbook generator.
+- Export reads the existing saved schedule; it does not change ad status, schedule assignments, or the monthly quota.
+- No new npm packages or separate patch are required. Haraj's Word export and publishing workflow remain untouched.

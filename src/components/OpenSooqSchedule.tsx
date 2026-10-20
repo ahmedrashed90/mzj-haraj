@@ -1,5 +1,6 @@
 import { CalendarBlank } from "@phosphor-icons/react";
 import { openSooqBranchName } from "../opensooq";
+import { buildOpenSooqXlsx, type OpenSooqExcelRow } from "../opensooq-xlsx";
 import type { OpenSooqBranchId, OpenSooqScheduleRow } from "../types";
 
 export const numberText = (value: number) => Number(value).toLocaleString("ar-SA-u-nu-latn");
@@ -9,25 +10,30 @@ export const dateText = (value: string) => {
 };
 export const priceText = (value: number) => value > 0 ? `${numberText(value)} ر.س` : "يحتاج تحديد سعر";
 export const formatLabel = (value: OpenSooqScheduleRow) => `${value.carName} — ${value.statement} — ${value.modelYear}`;
-function csvEscape(value: string | number) {
-  const plain = String(value ?? "");
-  const safe = /^[=+@-]/.test(plain) ? `'${plain}` : plain;
-  return `"${safe.replace(/"/g, '""')}"`;
-}
-export function downloadOpenSooqCsv(rows: OpenSooqScheduleRow[], start: string, end: string, branchId?: OpenSooqBranchId) {
-  const titles = ["تاريخ النشر", "الفرع", "السيارة", "البيان", "الموديل", "سعر السيارة (ر.س)", "رقم التواصل", "حالة الإعلان"];
-  const data = rows.map((ad) => [ad.scheduledDate, ad.branchId ? openSooqBranchName(ad.branchId) : "", ad.carName,
-    ad.statement, ad.modelYear, ad.price || "", ad.phone, ad.status === "published" ? "تم النشر" : "لم ينشر"]);
-  const content = `\ufeff${[titles, ...data].map((row) => row.map(csvEscape).join(",")).join("\r\n")}`;
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+export function downloadOpenSooqXlsx(rows: OpenSooqScheduleRow[], start: string, end: string, branchId?: OpenSooqBranchId) {
+  const titles = ["تاريخ النشر", "الفرع", "السيارة", "البيان", "الموديل", "السعر (ر.س)", "رقم التواصل", "حالة الإعلان"];
+  const data: OpenSooqExcelRow[] = rows.map((ad) => ({
+    date: ad.scheduledDate,
+    branch: ad.branchId ? openSooqBranchName(ad.branchId) : "",
+    car: ad.carName,
+    statement: ad.statement,
+    modelYear: ad.modelYear,
+    price: Number.isFinite(ad.price) && ad.price > 0 ? ad.price : null,
+    phone: String(ad.phone ?? ""),
+    statusLabel: ad.status === "published" ? "\u062a\u0645 \u0627\u0644\u0646\u0634\u0631" : "\u0644\u0645 \u064a\u0646\u0634\u0631",
+    published: ad.status === "published",
+    order: ad.order,
+  }));
+  const bytes = buildOpenSooqXlsx(data, { headers: titles, sheetName: "\u062c\u062f\u0648\u0644 \u0627\u0644\u0646\u0634\u0631" });
+  const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
   const element = document.createElement("a");
   element.href = url;
-  element.download = `MZJ-OpenSooq-${branchId || "all"}-${start}-to-${end}.csv`;
+  element.download = `MZJ-OpenSooq-${branchId || "all"}-${start}-to-${end}.xlsx`;
   document.body.appendChild(element);
   element.click();
   element.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
 function ScheduleRowsTable({ rows, readOnly = false, showBranch = false, savingRow, onPrice, onStatus }: {

@@ -6,7 +6,7 @@ import {
 import { matchWebsiteCar } from "../ad-copy";
 import { useAppData } from "../AppDataContext";
 import { ConfirmButton, EmptyState, PageTitle, StatCard } from "../components/Ui";
-import { DailySchedule, dateText, downloadOpenSooqCsv, formatLabel, numberText } from "../components/OpenSooqSchedule";
+import { DailySchedule, dateText, downloadOpenSooqXlsx, formatLabel, numberText } from "../components/OpenSooqSchedule";
 import { createOpenSooqManagerAuthUser } from "../firebase";
 import {
   changeOpenSooqRow, createOpenSooqPlan, deleteOpenSooqPlan, ensureOpenSooqAssignments, saveOpenSooqConfiguration,
@@ -311,8 +311,8 @@ export function OpenSooqPage() {
               <span>{plan.rows.length} إعلان · {branchCounts} · {published} منشور</span></summary>
             <div className="opensooq-week-body"><div className="opensooq-saved-actions"><span>إعلانات الفرع المعروضة: <strong>{shownRows.length}</strong> من {plan.rows.length}</span>
               <div className="opensooq-saved-buttons"><button className="secondary-button compact" disabled={!shownRows.length}
-                onClick={() => downloadOpenSooqCsv(shownRows, plan.planStart, plan.planEnd, branchFilter === "all" ? undefined : branchFilter)}>
-                <DownloadSimple size={17} />تصدير CSV</button>
+                onClick={() => downloadOpenSooqXlsx(shownRows, plan.planStart, plan.planEnd, branchFilter === "all" ? undefined : branchFilter)}>
+                <DownloadSimple size={17} />تصدير Excel</button>
                 {published === 0 ? <ConfirmButton className="danger-button compact" confirmText={`حذف جدول هذا الأسبوع وإرجاع ${plan.rows.length} إعلانًا إلى رصيد الشهر؟`} onConfirm={() => removePlan(plan)}><Trash size={16} />حذف وإرجاع الرصيد</ConfirmButton> : null}</div>
             </div>{shownRows.length ? <DailySchedule rows={shownRows} showBranch={branchFilter === "all"} savingRow={savingRow}
               onPrice={(row) => setEditingPrice({ planId: plan.id, row, value: String(row.price || "") })}

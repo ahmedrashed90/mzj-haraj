@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarBlank, CheckCircle, DownloadSimple, FloppyDisk, Phone, Storefront, WarningCircle } from "@phosphor-icons/react";
 import { useAuth } from "../AuthContext";
-import { DailySchedule, dateText, downloadOpenSooqCsv, formatLabel, numberText } from "../components/OpenSooqSchedule";
+import { DailySchedule, dateText, downloadOpenSooqXlsx, formatLabel, numberText } from "../components/OpenSooqSchedule";
 import { EmptyState, PageTitle, StatCard } from "../components/Ui";
 import { changeOpenSooqRow, subscribeOpenSooqBranchRows } from "../opensooq-data";
 import { openSooqBranchName, openSooqMonthKey } from "../opensooq";
@@ -84,8 +84,8 @@ export function OpenSooqManagerPage() {
             <summary><span><CalendarBlank size={20} />أسبوع {dateText(from)} – {dateText(to)}</span>
               <span>{week.rows.length} إعلان · {publishedInWeek} منشور · {week.rows.length - publishedInWeek} متبقي</span></summary>
             <div className="opensooq-week-body"><div className="opensooq-saved-actions"><span>مسؤول النشر: <strong>{managerName}</strong></span>
-              <button className="secondary-button compact" onClick={() => downloadOpenSooqCsv(week.rows, from, to, branchId)}>
-                <DownloadSimple size={17} />تصدير جدول فرعي CSV</button></div>
+              <button className="secondary-button compact" onClick={() => downloadOpenSooqXlsx(week.rows, from, to, branchId)}>
+                <DownloadSimple size={17} />تصدير جدول فرعي Excel</button></div>
               <DailySchedule rows={week.rows} savingRow={savingRow}
                 onPrice={(row) => setEditingPrice({ row: row as OpenSooqAssignment, value: String(row.price || "") })}
                 onStatus={(row) => void toggleStatus(row as OpenSooqAssignment)} />

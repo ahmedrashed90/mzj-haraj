@@ -1,0 +1,26 @@
+MZJ Haraj + OpenSooq v1.22.0 FULL
+Source base: MZJ-Haraj-v1.21.0-OPENSOOQ-BRANCH-MANAGERS-FULL.zip
+
+CHANGES
+- OpenSooq admin and branch-manager export actions now produce true XLSX files, not CSV.
+- Fixed dark navy header, RTL Arabic worksheet, Tajawal font, six pastel date-group colors, and top separators between dates.
+- Comfortable column widths and row heights, real Excel date and numeric price formats, and contact phone numbers stored as text.
+- Colored published/pending statuses, frozen header, Excel filters, landscape printing, and repeat header on printed pages.
+- One clean browser-side exporter without adding npm dependencies.
+- All original Haraj functionality, Firebase rules, OpenSooq quota accounting, saved plans, and branch assignments remain unchanged.
+
+VERIFICATION
+- 16/16 Node tests passed (OpenSooq scheduling, manager access, Excel export, ZIP format and UI wiring).
+- All 31 TS/TSX source/API files passed syntax/transpilation checks with TypeScript.
+- The standalone Excel exporter passed strict TypeScript type checking.
+- Generated a 56-row Arabic test XLSX; openpyxl verified headers, RTL, frozen header, six column widths, date colors, text phone numbers, numeric prices, status fonts, and print layout.
+- Generated a 147-row test XLSX; ZIP integrity and openpyxl validation passed (147 rows, 11 days, 6 palette colors).
+- Only README, package version and three OpenSooq TSX files differ from v1.21.0; all other original source files are byte-for-byte unchanged.
+- Full npm build was not performed: project dependencies are not installed and npm registry access is unavailable in this runtime.
+- Firebase live integration and Vercel deployment were not performed; no production data was modified.
+
+TO VERIFY AFTER DEPLOYMENT
+- Deploy the complete v1.22.0 source (and ensure existing v1.21.0 Firebase rules remain deployed).
+- In the OpenSooq admin page, export all-branches and filtered-branch plans and confirm .xlsx download.
+- Sign in as each manager and export only that branch's schedule.
+- Open the XLSX in Microsoft Excel; confirm colors by day, header, widths, status, and that phone numbers retain leading zeros.
