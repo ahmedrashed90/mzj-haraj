@@ -1,4 +1,4 @@
-import type { OpenSooqMonth, OpenSooqScheduleRow, StockGroup, WebsiteCarData } from "./types";
+import type { OpenSooqAssignment, OpenSooqBranchId, OpenSooqMonth, OpenSooqScheduleRow, StockGroup, WebsiteCarData } from "./types";
 
 const DAY_NAMES = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"] as const;
 
@@ -38,6 +38,43 @@ export function getOpenSooqPlanDays(monthKey: string, saturday: string, todayKey
     if (day !== 5) result.push({ key: cursor, name: DAY_NAMES[day] });
   }
   return result;
+}
+
+export const OPEN_SOOQ_BRANCHES = [
+  { id: "showroom", name: "الصالة" },
+  { id: "qadisiyah", name: "القادسية" },
+] as const;
+export function openSooqBranchName(branchId: OpenSooqBranchId) {
+  return OPEN_SOOQ_BRANCHES.find((branch) => branch.id === branchId)?.name || "غير محدد";
+}
+
+/** Stable, day-by-day 50/50 allocation. For odd days the showroom receives the extra row. */
+export function assignOpenSooqBranches(rows: OpenSooqScheduleRow[]): OpenSooqScheduleRow[] {
+  const byDay = new Map<string, Array<{ row: OpenSooqScheduleRow; index: number }>>();
+  rows.forEach((row, index) => {
+    const day = byDay.get(row.scheduledDate) || [];
+    day.push({ row, index });
+    byDay.set(row.scheduledDate, day);
+  });
+  const assigned = [...rows];
+  for (const entries of byDay.values()) {
+    entries.sort((a, b) => a.row.order - b.row.order || a.index - b.index);
+    entries.forEach(({ row, index }, position) => {
+      assigned[index] = { ...row, branchId: row.branchId === "showroom" || row.branchId === "qadisiyah"
+        ? row.branchId : position % 2 === 0 ? "showroom" : "qadisiyah" };
+    });
+  }
+  return assigned;
+}
+
+export function mergeOpenSooqAssignments(rows: OpenSooqScheduleRow[], assignments: OpenSooqAssignment[]): OpenSooqScheduleRow[] {
+  const byId = new Map(assignments.map((row) => [row.id, row]));
+  return assignOpenSooqBranches(rows).map((row) => {
+    const assigned = byId.get(row.id);
+    return assigned && assigned.branchId === row.branchId
+      ? { ...row, price: assigned.price, status: assigned.status, publishedAt: assigned.publishedAt }
+      : row;
+  });
 }
 
 export type PricedOpenSooqVehicle = StockGroup & { price: number };
@@ -108,7 +145,7 @@ export function buildOpenSooqSchedule(
         scheduledDate: day.key, order: sequence, price: selected.price, phone, status: "scheduled" });
     }
   }
-  return scheduled;
+  return assignOpenSooqBranches(scheduled);
 }
 
 export function getOpenSooqPriceForStock(stock: StockGroup, siteCars: WebsiteCarData[], matcher: (stock: StockGroup, cars: WebsiteCarData[]) => WebsiteCarData | null) {

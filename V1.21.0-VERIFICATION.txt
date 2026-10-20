@@ -1,0 +1,27 @@
+MZJ Haraj + OpenSooq v1.21.0 FULL
+Source base: MZJ-Haraj-v1.20.0-OPENSOOQ-FULL.zip
+
+Changes:
+- Separate OpenSooq branch manager accounts for Showroom and Qadisiyah.
+- Email/password Firebase Authentication manager login, isolated routes.
+- Firestore rules restrict managers to their own branch's individual ad documents.
+- New OpenSooq schedules split per day; old plans migrated idempotently without extra quota reservations.
+- Admin filters and exports each branch; managers view/update their own ad rows.
+- 14/day -> 7/7; 12/day -> 6/6; last 7 -> 4/3.
+- Direct /opensooq Vercel route and Firebase rules deploy config.
+- Original Haraj schedule, stock API, ad copy, agents, and data collections unchanged.
+
+Validation:
+- 11/11 Node tests passed, including October 147 split and November 12/day.
+- TypeScript syntax/transpilation checked for all 30 TS/TSX source/API files.
+- JSON files and ZIP verified.
+- Full npm build NOT VERIFIED: npm registry inaccessible (EAI_AGAIN), dependencies could not be installed.
+- Firebase rules NOT DEPLOYED and Firebase Auth/Firestore live integration NOT TESTED.
+
+Deployment:
+1. Deploy source to Vercel.
+2. Deploy firestore.rules to Firebase project mzj-haraj-manager (see README_AR.md).
+3. Login as admin, set manager names/emails in OpenSooq settings, save.
+4. Create manager auth accounts from UI if not already in Firebase Auth.
+5. Open October 2026; old saved plans auto-migrate. Use manual sync button if necessary.
+6. Test each manager account sees only its own ads before production use.

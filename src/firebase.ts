@@ -1,5 +1,5 @@
-import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { deleteApp, initializeApp } from "firebase/app";
+import { createUserWithEmailAndPassword, getAuth, signOut } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -16,3 +16,15 @@ export const ADMIN_EMAIL = "admin@mzj.com";
 export const firebaseApp = initializeApp(firebaseConfig);
 export const auth = getAuth(firebaseApp);
 export const db = getFirestore(firebaseApp);
+
+/** Creates a manager's Firebase email/password account without logging out the admin. */
+export async function createOpenSooqManagerAuthUser(email: string, password: string) {
+  const secondary = initializeApp(firebaseConfig, `opensooq-create-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  try {
+    const secondaryAuth = getAuth(secondary);
+    await createUserWithEmailAndPassword(secondaryAuth, email.trim().toLowerCase(), password);
+    await signOut(secondaryAuth);
+  } finally {
+    await deleteApp(secondary);
+  }
+}

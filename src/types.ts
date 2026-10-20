@@ -182,10 +182,16 @@ export const AD_STATUS_LABELS: Record<AdStatus, string> = {
 };
 
 /** OpenSooq data is separate from Haraj's representatives and Haraj ad collections. */
+export type OpenSooqBranchId = "showroom" | "qadisiyah";
+export type OpenSooqBranchManager = { name: string; email: string };
+export type OpenSooqBranchManagers = Record<OpenSooqBranchId, OpenSooqBranchManager>;
+
 export type OpenSooqSettings = {
   accountName: string;
   phone: string;
   dailyTarget: number;
+  /** Email addresses of the two authorized OpenSooq managers; not Haraj sales agents. */
+  branchManagers: OpenSooqBranchManagers;
 };
 
 export type OpenSooqMonth = {
@@ -200,6 +206,8 @@ export type OpenSooqMonth = {
 };
 
 export type OpenSooqScheduleRow = {
+  /** Added in v1.21; old saved rows are assigned deterministically without rescheduling. */
+  branchId?: OpenSooqBranchId;
   /** Unique within the selected month; reflects a quantity slot, not a chassis number. */
   id: string;
   stockKey: string;
@@ -223,4 +231,12 @@ export type OpenSooqPlan = {
   planEnd: string;
   rows: OpenSooqScheduleRow[];
   createdAt?: string;
+};
+
+/** A per-ad document visible only to its assigned branch manager. */
+export type OpenSooqAssignment = OpenSooqScheduleRow & {
+  branchId: OpenSooqBranchId;
+  planId: string;
+  monthKey: string;
+  weekStart: string;
 };

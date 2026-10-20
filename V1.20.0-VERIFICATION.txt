@@ -1,0 +1,16 @@
+MZJ Haraj v1.20.0 - OpenSooq Tab
+2026-10-19
+
+Code changes:
+- Added isolated OpenSooq page and navigation without modifying Haraj scheduling logic.
+- Added per-month account quota/active baseline and Firestore transactional weekly reservations.
+- One listing per available inventory quantity slot without trim grouping by the Haraj scheduling layer.
+- Unified phone, price lookup and editable price, publish tracking, CSV export, month boundary and Friday exclusions.
+
+Checks completed:
+PASS: All 5 Node.js scheduling/quota tests (node --experimental-strip-types --test tests/opensooq.test.mjs).
+PASS: TS/TSX syntax transpilation on all modified/new modules with TypeScript 5.9.
+NOT RUN: Full npm run build. Dependency download blocked by EAI_AGAIN (no registry DNS access here).
+NOT RUN: Live Firestore/Vercel integration test (requires deploying with configured credentials).
+
+No Vercel deployment or Firestore writes were performed during this edit.

@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildOpenSooqSchedule, getOpenSooqPlanDays, getOpenSooqRemaining,
+  assignOpenSooqBranches, buildOpenSooqSchedule, getOpenSooqPlanDays, getOpenSooqRemaining,
+  mergeOpenSooqAssignments,
   openSooqSaturday, selectOpenSooqVehicles,
 } from '../src/opensooq.ts';
 
@@ -56,4 +57,63 @@ test('manual week schedule respects daily target, remaining quota and reserved u
   const next = buildOpenSooqSchedule(days, 14, 80, vehicles, rows.map((r) => r.id), '0501234567');
   assert.equal(next.length, 70);
   assert.equal(next.every((r) => !rows.some((a) => a.id === r.id)), true);
+});
+
+
+test('October daily 14 ads split 7/7 across the two branch managers', () => {
+  const vehicles = Array.from({length: 147}, (_, i) => ({
+    key: `stock-${i}`, carName: `سيارة ${i}`, statement: `فئة ${i}`, modelYear: '2026',
+    quantity: 1, statusName: 'متاح للبيع', price: 85000,
+  }));
+  const firstWeek = buildOpenSooqSchedule(getOpenSooqPlanDays('2026-10', '2026-10-17', '2026-10-19'),
+    14, 147, vehicles, [], '0501234567');
+  assert.equal(firstWeek.length, 56);
+  for (const date of new Set(firstWeek.map((row) => row.scheduledDate))) {
+    assert.equal(firstWeek.filter((row) => row.scheduledDate === date && row.branchId === 'showroom').length, 7);
+    assert.equal(firstWeek.filter((row) => row.scheduledDate === date && row.branchId === 'qadisiyah').length, 7);
+  }
+  const secondWeek = buildOpenSooqSchedule(getOpenSooqPlanDays('2026-10', '2026-10-24', '2026-10-19'),
+    14, 91, vehicles, firstWeek.map((row) => row.id), '0501234567');
+  assert.equal(secondWeek.length, 84);
+  const lastDay = buildOpenSooqSchedule(getOpenSooqPlanDays('2026-10', '2026-10-31', '2026-10-19'),
+    14, 7, vehicles, [...firstWeek, ...secondWeek].map((row) => row.id), '0501234567');
+  assert.equal(lastDay.length, 7);
+  assert.equal(lastDay.filter((row) => row.branchId === 'showroom').length, 4);
+  assert.equal(lastDay.filter((row) => row.branchId === 'qadisiyah').length, 3);
+  assert.equal([...firstWeek, ...secondWeek, ...lastDay].length, 147);
+  assert.equal(new Set([...firstWeek, ...secondWeek, ...lastDay].map((row) => row.id)).size, 147);
+});
+
+test('November daily 12 ads split 6/6 without changing October schedules', () => {
+  const vehicles = Array.from({length: 30}, (_, i) => ({
+    key: `car-${i}`, carName: `سيارة ${i}`, statement: `الفئة ${i}`, modelYear: '2026',
+    quantity: 1, statusName: 'متاح للبيع', price: 90000,
+  }));
+  const rows = buildOpenSooqSchedule([{key: '2026-11-01', name: 'الأحد'}], 12, 160, vehicles, [], '0501234567');
+  assert.equal(rows.length, 12);
+  assert.equal(rows.filter((row) => row.branchId === 'showroom').length, 6);
+  assert.equal(rows.filter((row) => row.branchId === 'qadisiyah').length, 6);
+});
+
+test('previously saved schedule can be divided without changing status, price, phone, date, id or quota', () => {
+  const original = Array.from({length: 14}, (_, i) => ({
+    id: `car:${i + 1}`, stockKey: 'car', unitIndex: i + 1,
+    carName: 'سيارة', statement: 'فئة', modelYear: '2026', scheduledDate: '2026-10-22',
+    order: i + 1, price: 85000 + i, phone: '0500000000', status: i === 0 ? 'published' : 'scheduled',
+  }));
+  const copy = structuredClone(original);
+  const assigned = assignOpenSooqBranches(original);
+  assert.deepEqual(original, copy, 'migration must not mutate saved master plan rows');
+  assert.equal(assigned.filter((row) => row.branchId === 'showroom').length, 7);
+  assert.equal(assigned.filter((row) => row.branchId === 'qadisiyah').length, 7);
+  assert.deepEqual(assigned.map(({branchId, ...row}) => row), original);
+  const rechecked = assignOpenSooqBranches(assigned);
+  assert.deepEqual(rechecked, assigned, 'assignment is idempotent');
+  const updated = mergeOpenSooqAssignments(assigned, [{ ...assigned[1], branchId: 'qadisiyah',
+    planId: '2026-10_2026-10-17', monthKey: '2026-10', weekStart: '2026-10-17',
+    price: 70000, status: 'published', publishedAt: '2026-10-22T00:00:00.000Z' }]);
+  assert.equal(updated[1].price, 70000);
+  assert.equal(updated[1].status, 'published');
+  assert.equal(updated[0].status, 'published');
+  assert.equal(updated[2].status, 'scheduled');
 });

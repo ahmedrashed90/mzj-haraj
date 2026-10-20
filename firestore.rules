@@ -2,9 +2,54 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email == "admin@mzj.com";
+    }
+
+    function isOpenSooqManagerFor(branchId) {
+      let path = /databases/$(database)/documents/settings/opensooq_publishing;
+      return request.auth != null
+        && exists(path)
+        && 'branchManagers' in get(path).data
+        && branchId in get(path).data.branchManagers
+        && get(path).data.branchManagers[branchId].email == request.auth.token.email;
+    }
+
+    // The two assigned managers may read their role settings but not change them.
+    match /settings/opensooq_publishing {
+      allow read: if isAdmin() || (
+        request.auth != null
+        && 'branchManagers' in resource.data
+        && (
+          ('showroom' in resource.data.branchManagers
+            && resource.data.branchManagers.showroom.email == request.auth.token.email)
+          || ('qadisiyah' in resource.data.branchManagers
+            && resource.data.branchManagers.qadisiyah.email == request.auth.token.email)
+        )
+      );
+      allow write: if isAdmin();
+    }
+
+    // Per-ad documents make it impossible for one manager to read the other branch's ads.
+    // The master plans, monthly quota and all Haraj collections remain admin-only.
+    match /opensooq_branch_assignments/{branchId}/rows/{rowId} {
+      allow read: if isAdmin() || isOpenSooqManagerFor(branchId);
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isOpenSooqManagerFor(branchId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['price', 'status', 'publishedAt', 'updatedAt'])
+        && request.resource.data.price is int
+        && request.resource.data.price >= 0
+        && request.resource.data.status in ['scheduled', 'published']
+        && request.resource.data.publishedAt is string
+        && (request.resource.data.status != 'published' || request.resource.data.price > 0)
+      );
+    }
+
     match /{document=**} {
-      allow read, write: if request.auth != null
-                         && request.auth.token.email == "admin@mzj.com";
+      allow read, write: if isAdmin();
     }
   }
 }
