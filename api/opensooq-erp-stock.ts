@@ -1,11 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { mapNextErpStock } from "../server/opensooq-erp-stock";
+import { readNextErpStock } from "../server/opensooq-erp-stock";
 
 const FIREBASE_API_KEY = "AIzaSyCFJSPtJ7zUieFJLek89bRjwbpjx4RTH4Q";
 const ADMIN_EMAIL = "admin@mzj.com";
-const PAGE_SIZE = 200;
-const MAX_PAGES = 100;
-type ErpRecord = Record<string, unknown>;
 
 function clean(value: unknown) { return String(value ?? "").replace(/\s+/g, " ").trim(); }
 function json(res: VercelResponse, status: number, payload: Record<string, unknown>) {
@@ -38,43 +35,12 @@ function erpConfig() {
   return { baseUrl, token: `token ${apiKey}:${apiSecret}` };
 }
 
-async function erpList(baseUrl: string, token: string, doctype: string, fields: string[], filters: unknown[]) {
-  const rows: ErpRecord[] = [];
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const url = new URL(`${baseUrl}/api/resource/${encodeURIComponent(doctype)}`);
-    url.searchParams.set("fields", JSON.stringify(fields));
-    url.searchParams.set("filters", JSON.stringify(filters));
-    url.searchParams.set("limit_start", String(page * PAGE_SIZE));
-    url.searchParams.set("limit_page_length", String(PAGE_SIZE));
-    url.searchParams.set("order_by", "name asc");
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20_000);
-    try {
-      const response = await fetch(url, { method: "GET", headers: { accept: "application/json", authorization: token },
-        cache: "no-store", signal: controller.signal });
-      const payload = await response.json().catch(() => null) as { data?: ErpRecord[] } | null;
-      if (!response.ok) throw new Error(`ERP_${doctype.replace(/\s/g, "_").toUpperCase()}_HTTP_${response.status}`);
-      if (!payload || !Array.isArray(payload.data)) throw new Error("ERP_INVALID_RESPONSE");
-      rows.push(...payload.data);
-      if (payload.data.length < PAGE_SIZE) return rows;
-    } finally { clearTimeout(timer); }
-  }
-  throw new Error("ERP_PAGINATION_LIMIT");
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "GET") return json(res, 405, { ok: false, error: "Method not allowed" });
   try {
     if (!await verifyFirebaseAdmin(bearer(req))) return json(res, 401, { ok: false, error: "غير مصرح بالدخول" });
     const { baseUrl, token } = erpConfig();
-    // These are the same Item/Serial No fields and availability rules used by MZJ's ERPNext integration.
-    const [items, serials] = await Promise.all([
-      erpList(baseUrl, token, "Item", ["name", "item_code", "item_name", "item_group", "type", "class", "model", "disabled", "is_sales_item"],
-        [["disabled", "=", 0], ["is_sales_item", "=", 1]]),
-      erpList(baseUrl, token, "Serial No", ["name", "item_code", "status", "car_status"],
-        [["status", "=", "Active"], ["car_status", "=", "متاحة للحجز"]]),
-    ]);
-    const mapped = mapNextErpStock(items, serials);
+    const mapped = await readNextErpStock(baseUrl, token);
     return json(res, 200, { ok: true, ...mapped, fetchedAt: new Date().toISOString(),
       source: "NEXT ERP / Item + Serial No / Active + متاحة للحجز" });
   } catch (error) {

@@ -10,13 +10,13 @@ import { ConfirmButton, EmptyState, PageTitle, StatCard } from "../components/Ui
 import { DailySchedule, dateText, downloadOpenSooqXlsx, formatLabel, numberText } from "../components/OpenSooqSchedule";
 import { createOpenSooqManagerAuthUser } from "../firebase";
 import {
-  changeOpenSooqRow, createOpenSooqPlan, deleteOpenSooqPlan, ensureOpenSooqAssignments, replaceOpenSooqUnpublishedPlan, saveOpenSooqConfiguration,
+  changeOpenSooqRow, createOpenSooqPlan, deleteOpenSooqPlan, ensureOpenSooqAssignments, removeOpenSooqDuplicateUnpublishedRows, replaceOpenSooqUnpublishedPlan, saveOpenSooqConfiguration,
   subscribeOpenSooqAdminAssignments, subscribeOpenSooqMonth, subscribeOpenSooqPlans, subscribeOpenSooqSettings,
 } from "../opensooq-data";
 import {
   buildOpenSooqSchedule, getOpenSooqPlanDays, getOpenSooqRemaining, getOpenSooqPriceForStock, rebuildOpenSooqUnpublishedRows,
   openSooqDateKey, openSooqMonthKey, openSooqSaturday, openSooqShiftDate,
-  openSooqWeekId, OPEN_SOOQ_BRANCHES, mergeOpenSooqAssignments,
+  openSooqWeekId, OPEN_SOOQ_BRANCHES, mergeOpenSooqAssignments, findOpenSooqDuplicateModelDays,
 } from "../opensooq";
 import type {
   OpenSooqAssignment, OpenSooqBranchId, OpenSooqMonth, OpenSooqPlan, OpenSooqScheduleRow, OpenSooqSettings, StockGroup,
@@ -200,6 +200,17 @@ export function OpenSooqPage() {
       setError(cause instanceof Error ? cause.message : "تعذر تحديث سيارات الجدول من NEXT ERP");
     } finally { setBusy(""); }
   }
+  async function cleanSavedPlanDuplicates(plan: OpenSooqPlan) {
+    if (busy) return;
+    setBusy(`clean:${plan.id}`); setError(""); setNotice("");
+    try {
+      const removed = await removeOpenSooqDuplicateUnpublishedRows(plan.id);
+      setNotice(removed ? `تم حذف ${removed} إعلان مكرر غير منشور من الجدول وإرجاع نفس العدد إلى رصيد الباقة، دون تغيير المنشور أو بيانات الفروع.`
+        : "لا توجد إعلانات مكررة غير منشورة في هذا الجدول.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "تعذر تنظيف تكرارات الجدول");
+    } finally { setBusy(""); }
+  }
   async function toggleStatus(plan: OpenSooqPlan, row: OpenSooqScheduleRow) {
     if (savingRow) return;
     if (row.status === "published" && !window.confirm(`إعادة إعلان ${formatLabel(row)} إلى حالة غير منشور؟`)) return;
@@ -317,7 +328,7 @@ export function OpenSooqPage() {
 
     <section className="panel opensooq-plan-card">
       <div className="panel-head"><div><h2><CalendarBlank size={20} />تجهيز جدول نشر أسبوعي</h2>
-        <p>من السبت إلى الخميس، الجمعة مستبعدة. السيارات من NEXT ERP، وبحد أقصى إعلان واحد لكل نوع وفئة وموديل في اليوم.</p></div>
+        <p>من السبت إلى الخميس، الجمعة مستبعدة. السيارات من NEXT ERP، وإعلان واحد فقط لكل نوع سيارة وموديل في اليوم، حتى لو اختلفت الفئة أو الفرع.</p></div>
         <div className="week-switcher"><button className="icon-button" title="الأسبوع السابق" onClick={() => changeWeek(-1)}><ArrowRight size={19} /></button>
           <label><CalendarBlank size={18} /><input type="date" value={saturday} onChange={(e) => e.target.value && (setSaturday(openSooqSaturday(e.target.value)), setShowPreview(false))} /></label>
           <button className="icon-button" title="الأسبوع التالي" onClick={() => changeWeek(1)}><ArrowLeft size={19} /></button></div>
@@ -333,7 +344,7 @@ export function OpenSooqPage() {
       {savedThisWeek ? <div className="alert success"><CheckCircle size={17} />جدول هذا الأسبوع محفوظ بالفعل، ويمكن فتحه من الجداول أسفل الصفحة. إنشاء معاينة أخرى لا يخصم شيئًا.</div> : null}
       {!planDays.length && !savedThisWeek ? <div className="alert info"><CalendarBlank size={17} />لا توجد أيام نشر متبقية في هذا الأسبوع ضمن الشهر المحدد. اختر الأسبوع التالي.</div> : null}
       {monthConfigured && !savedThisWeek && planDays.length > 0 && previewRows.length < Math.min(candidateLimit, remaining) && !stockLoading && !stockError ?
-        <div className="alert warning"><WarningCircle size={17} />يمكن تجهيز {previewRows.length} إعلان فقط بدلًا من {Math.min(candidateLimit, remaining)}؛ عدد سيارات NEXT ERP المتاحة أو تنوع النوع/الفئة/الموديل غير كافٍ لملء كل الأيام دون تكرار في نفس اليوم. لن نضيف إعلانات مكررة أو وهمية.</div> : null}
+        <div className="alert warning"><WarningCircle size={17} />يمكن تجهيز {previewRows.length} إعلان فقط بدلًا من {Math.min(candidateLimit, remaining)}؛ عدد موديلات NEXT ERP المختلفة أو وحدات المخزون غير كافٍ لملء كل الأيام دون تكرار نفس نوع السيارة والموديل، حتى لو اختلفت الفئة. لن نضيف إعلانات مكررة أو وهمية.</div> : null}
       {stockExcludedUnmapped > 0 ? <div className="alert warning"><WarningCircle size={17} />تم استبعاد {stockExcludedUnmapped} وحدة من NEXT ERP لأن بيانات النوع أو الفئة أو الموديل غير مكتملة في Item؛ لا تُستخدم بيانات تخمينية.</div> : null}
       <div className="opensooq-plan-actions"><div className="opensooq-stock-hint"><Storefront size={18} />NEXT ERP: {numberText(stockTotalVehicles)} سيارة متاحة للحجز في {numberText(stock.length)} نوع/فئة/موديل، منها {numberText(availableSlots)} وحدة غير مجدولة في هذا الشهر.</div>
         <button className="primary-button" disabled={!canCreate || Boolean(busy)} onClick={() => setShowPreview(true)}><ClipboardText size={18} />معاينة الجدول الأسبوعي <b>{previewRows.length || ""}</b></button></div>
@@ -352,13 +363,14 @@ export function OpenSooqPage() {
       {!displayPlans ? <EmptyState title="جارٍ تحميل الجداول" text="انتظر قراءة جداول هذا الشهر من قاعدة البيانات." />
         : displayPlans.length === 0 ? <EmptyState title="لا توجد جداول لهذا الشهر" text="احفظ إعدادات الباقة ثم جهز أول جدول أسبوعي." />
         : <div className="opensooq-week-list">{displayPlans.map((plan) => {
+          const duplicateDays = findOpenSooqDuplicateModelDays(plan.rows);
           const published = plan.rows.filter((row) => row.status === "published").length;
           const shownRows = branchFilter === "all" ? plan.rows : plan.rows.filter((row) => row.branchId === branchFilter);
           const branchCounts = OPEN_SOOQ_BRANCHES.map((branch) => `${branch.name}: ${plan.rows.filter((row) => row.branchId === branch.id).length}`).join(" · ");
           return <details className="opensooq-saved-week" key={plan.id} open={plan.id === monthWeekKey}>
             <summary><span><CalendarBlank size={20} />أسبوع {dateText(plan.planStart)} – {dateText(plan.planEnd)}</span>
               <span>{plan.rows.length} إعلان · {branchCounts} · {published} منشور</span></summary>
-            <div className="opensooq-week-body"><div className="opensooq-saved-actions"><span>إعلانات الفرع المعروضة: <strong>{shownRows.length}</strong> من {plan.rows.length}</span>
+            <div className="opensooq-week-body">{duplicateDays.length ? <div className="alert warning"><WarningCircle size={17} />تنبيه: يوجد تكرار لنفس نوع السيارة والموديل في أيام {duplicateDays.join("، ")} داخل هذا الجدول القديم. لا تنشر المكرر؛ استخدم «تنظيف المكرر وإرجاع رصيده» أولًا، ثم «تحديث غير المنشور من NEXT ERP» عند الحاجة. الإعلانات المنشورة لا تتغير تلقائيًا.</div> : null}<div className="opensooq-saved-actions"><span>إعلانات الفرع المعروضة: <strong>{shownRows.length}</strong> من {plan.rows.length}</span>
               <div className="opensooq-saved-buttons">{plan.rows.some((row) => row.status !== "published") ?
                 <button className="secondary-button compact" disabled={Boolean(busy) || !month}
                   onClick={() => void rebuildSavedPlan(plan)}><ArrowClockwise size={16} />
@@ -366,6 +378,9 @@ export function OpenSooqPage() {
                 <button className="secondary-button compact" disabled={!shownRows.length}
                 onClick={() => downloadOpenSooqXlsx(shownRows, plan.planStart, plan.planEnd, branchFilter === "all" ? undefined : branchFilter)}>
                 <DownloadSimple size={17} />تصدير Excel</button>
+                {duplicateDays.length ? <ConfirmButton className="secondary-button compact"
+                  confirmText="تنظيف التكرار في هذا الجدول؟ سيتم حذف الإعلانات المكررة غير المنشورة فقط وإرجاع رصيدها، مع الاحتفاظ بالإعلانات المنشورة كما هي."
+                  onConfirm={() => cleanSavedPlanDuplicates(plan)}><WarningCircle size={16} />تنظيف المكرر وإرجاع رصيده</ConfirmButton> : null}
                 {published === 0 ? <ConfirmButton className="danger-button compact" confirmText={`حذف جدول هذا الأسبوع وإرجاع ${plan.rows.length} إعلانًا إلى رصيد الشهر؟`} onConfirm={() => removePlan(plan)}><Trash size={16} />حذف وإرجاع الرصيد</ConfirmButton> : null}</div>
             </div>{shownRows.length ? <DailySchedule rows={shownRows} showBranch={branchFilter === "all"} savingRow={savingRow}
               onPrice={(row) => setEditingPrice({ planId: plan.id, row, value: String(row.price || "") })}

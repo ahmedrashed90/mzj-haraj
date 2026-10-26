@@ -1,0 +1,27 @@
+MZJ Haraj Manager v1.24.0 - OpenSooq Strict Same-Day Model Uniqueness + Verified ERP Reader
+
+Changes:
+- OpenSooq ONLY: one type+model year per publishing day across both branches, even across different trims.
+- Preserve separate serial units and monthly usedUnitKeys; never create placeholder ads.
+- New and rebuilt schedules reject duplicates; existing plans are inspected for duplicates.
+- Explicit atomic cleanup of duplicate UNPUBLISHED old ads, with exact reservedCount refund and assignment deletion; published ads untouched.
+- NEXT ERP reader now uses the Postman-verified Frappe method GET /api/method/frappe.client.get_list and JSON message array.
+- Fetch only Item codes referenced by available Active Serial Nos, using tested six Item fields.
+- Keep all Haraj original code and logic unchanged.
+
+Verification:
+- Node tests: 35/35 passing (as of initial suite; run tests/opensooq*.test.mjs).
+- Typecheck: pure src/opensooq.ts and server/opensooq-erp-stock.ts passed with global TypeScript.
+- Syntax transpilation: all six modified TS/TSX implementation files passed with global TypeScript.
+- Strict typecheck: API route + ERP reader + shared types passed with a temporary Vercel type stub.
+- Postman snapshot provided by user: 122 Active/available serials, 23 unique Item codes.
+- Local simulated daily scheduling with those 122 serials and mapped 23 Item types: 13 unique models on day one, no same-day duplicates; later days vary with available units.
+- Full npm run build: NOT verified here; npm install timed out because packages are not locally installed.
+- Live NEXT ERP / Vercel deployment: NOT performed; requires the user's server-side credentials and Vercel environment.
+
+Deploy:
+- Upload the complete source to the existing Haraj/OpenSooq Vercel project.
+- Ensure NEXT_ERP_URL=https://mzj2.newworldinfosys.com, NEXT_API_KEY, NEXT_API_SECRET exist as server-only env vars.
+- Redeploy, open OpenSooq, click 'تحديث NEXT ERP والأسعار', and verify stock counts.
+- Review any duplicate warnings on existing saved plans; use explicit cleanup before publishing old duplicates.
+- No Firestore rules changes required; the cleanup uses existing admin permissions.

@@ -137,17 +137,68 @@ export function selectOpenSooqVehicles(
   return selections;
 }
 
+function normalizeOpenSooqIdentityText(value: unknown) {
+  return String(value || "").normalize("NFKC").toLocaleLowerCase("ar-SA")
+    .replace(/[\u064b-\u065f\u0670]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي")
+    .replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim();
+}
+
+/** The full variant is still useful for identifying exact class/trim matches. */
 export function openSooqVariantIdentity(value: Pick<OpenSooqScheduleRow, "carName" | "statement" | "modelYear">) {
-  return [value.carName, value.statement, value.modelYear]
-    .map((field) => String(field || "").normalize("NFKC").toLocaleLowerCase("ar-SA")
-      .replace(/[\u064b-\u065f\u0670]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي")
-      .replace(/\s+/g, " ").trim()).join("|");
+  return [value.carName, value.statement, value.modelYear].map(normalizeOpenSooqIdentityText).join("|");
 }
 
 /**
- * Assign at most ONE listing for each car + class + model per publishing day.
- * Additional available VINs of the same variant are spread across later days.
- * If there are too few distinct variants, leave slots empty instead of duplicates.
+ * A conservative daily anti-rejection rule: one car TYPE and MODEL YEAR per day,
+ * even if different classes, Item codes or Serial Nos exist. It is intentionally
+ * independent of the branch, and also works with plans saved before NEXT ERP.
+ */
+export function openSooqModelIdentity(value: Pick<OpenSooqScheduleRow, "carName" | "modelYear">) {
+  return [value.carName, value.modelYear].map(normalizeOpenSooqIdentityText).join("|");
+}
+
+/** Inspect previously saved schedules without modifying published or reserved rows. */
+export function findOpenSooqDuplicateModelDays(
+  rows: Pick<OpenSooqScheduleRow, "scheduledDate" | "carName" | "modelYear">[],
+): string[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const row of rows) {
+    const identity = `${row.scheduledDate}|${openSooqModelIdentity(row)}`;
+    if (seen.has(identity)) duplicates.add(row.scheduledDate);
+    seen.add(identity);
+  }
+  return [...duplicates].sort();
+}
+
+/** Choose which old rows can remain without same-day duplicates, favoring published rows. */
+export function chooseOpenSooqUniqueModelRows(
+  rows: Pick<OpenSooqScheduleRow, "scheduledDate" | "carName" | "modelYear" | "status" | "order">[],
+): { keepIndices: number[]; publishedConflictDays: string[] } {
+  const priority = rows.map((row, index) => ({ row, index })).sort((a, b) =>
+    Number(b.row.status === "published") - Number(a.row.status === "published")
+    || a.row.scheduledDate.localeCompare(b.row.scheduledDate)
+    || a.row.order - b.row.order || a.index - b.index);
+  const seen = new Set<string>();
+  const keep = new Set<number>();
+  const conflicts = new Set<string>();
+  for (const { row, index } of priority) {
+    const model = `${row.scheduledDate}|${openSooqModelIdentity(row)}`;
+    if (!seen.has(model)) {
+      seen.add(model);
+      keep.add(index);
+    } else if (row.status === "published") {
+      conflicts.add(row.scheduledDate);
+    }
+  }
+  return { keepIndices: [...keep].sort((a, b) => a - b), publishedConflictDays: [...conflicts].sort() };
+}
+
+/**
+ * Assign at most ONE listing for each car TYPE + MODEL YEAR per publishing day.
+ * Different classes of the same car are not allowed on the same day, across BOTH
+ * branches. If there are too few distinct models, leave slots empty instead of
+ * generating ads that could be rejected as duplicates.
  */
 export function buildOpenSooqSchedule(
   days: Array<{ key: string; name: string }>, dailyTarget: number, available: number,
@@ -173,9 +224,8 @@ export function buildOpenSooqSchedule(
   const scheduled: OpenSooqScheduleRow[] = [];
   for (let dayIndex = 0; dayIndex < days.length && scheduled.length < quota; dayIndex++) {
     const day = days[dayIndex];
-    const blockedVariants = new Set(blockedRows.filter((row) => row.scheduledDate === day.key).map(openSooqVariantIdentity));
-    const candidates = [...queues.entries()].filter(([, queue]) => queue.length > 0
-      && !blockedVariants.has(openSooqVariantIdentity(queue[0])));
+    const blockedModels = new Set(blockedRows.filter((row) => row.scheduledDate === day.key).map(openSooqModelIdentity));
+    const candidates = [...queues.entries()].filter(([, queue]) => queue.length > 0);
     candidates.sort(([keyA, rowsA], [keyB, rowsB]) =>
       (usage.get(keyA) || 0) - (usage.get(keyB) || 0)
       || (lastDay.get(keyA) ?? -1) - (lastDay.get(keyB) ?? -1)
@@ -183,13 +233,16 @@ export function buildOpenSooqSchedule(
       || rowsA[0].statement.localeCompare(rowsB[0].statement, "ar")
       || rowsA[0].modelYear.localeCompare(rowsB[0].modelYear, "ar")
       || keyA.localeCompare(keyB));
-    const count = Math.min(target, quota - scheduled.length, candidates.length);
-    for (let position = 0; position < count; position++) {
-      const [stockKey, queue] = candidates[position];
+    let position = 0;
+    for (const [stockKey, queue] of candidates) {
+      if (position >= target || scheduled.length >= quota) break;
+      const identity = openSooqModelIdentity(queue[0]);
+      if (blockedModels.has(identity)) continue;
       const selected = queue.shift()!;
       scheduled.push({ id: selected.unitKey, stockKey, unitIndex: selected.unitIndex,
         ...(selected.stockSource ? { stockSource: selected.stockSource } : {}), carName: selected.carName, statement: selected.statement, modelYear: selected.modelYear,
-        scheduledDate: day.key, order: position + 1, price: selected.price, phone, status: "scheduled" });
+        scheduledDate: day.key, order: ++position, price: selected.price, phone, status: "scheduled" });
+      blockedModels.add(identity);
       usage.set(stockKey, (usage.get(stockKey) || 0) + 1);
       lastDay.set(stockKey, dayIndex);
     }
@@ -210,6 +263,10 @@ export function rebuildOpenSooqUnpublishedRows(
   if (!unpublished.length) return [...existingRows];
   const replacing = new Set(unpublished.map((row) => row.id));
   const blocked = existingRows.filter((row) => row.status === "published");
+  const publishedDuplicateDays = findOpenSooqDuplicateModelDays(blocked);
+  if (publishedDuplicateDays.length) {
+    throw new Error(`توجد إعلانات منشورة مكررة لنفس نوع السيارة والموديل في ${publishedDuplicateDays.join("، ")}. لا يمكن تغيير المنشور تلقائيًا؛ راجع الجدول يدويًا.`);
+  }
   const used = usedUnitKeys.filter((key) => !replacing.has(key));
   const replacements = new Map<string, OpenSooqScheduleRow>();
   const dates = [...new Set(unpublished.map((row) => row.scheduledDate))].sort();
@@ -218,7 +275,7 @@ export function rebuildOpenSooqUnpublishedRows(
     const picked = buildOpenSooqSchedule([{ key: date, name: date }], oldRows.length, oldRows.length,
       vehicles, used, oldRows[0].phone, blocked);
     if (picked.length !== oldRows.length) {
-      throw new Error(`لا توجد ${oldRows.length} سيارات متنوعة متاحة من NEXT ERP ليوم ${date}. لم يتغير الجدول أو الرصيد.`);
+      throw new Error(`لا توجد ${oldRows.length} موديلات سيارات مختلفة متاحة من NEXT ERP ليوم ${date} بدون تكرار، حتى مع اختلاف الفئة. لم يتغير الجدول أو الرصيد.`);
     }
     oldRows.forEach((row, index) => {
       const next = picked[index];

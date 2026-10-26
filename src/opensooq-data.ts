@@ -3,7 +3,7 @@ import {
 } from "firebase/firestore";
 import { ADMIN_EMAIL, db } from "./firebase";
 import {
-  assignOpenSooqBranches, getOpenSooqRemaining, OPEN_SOOQ_BRANCHES, openSooqVariantIdentity, openSooqWeekId,
+  assignOpenSooqBranches, chooseOpenSooqUniqueModelRows, getOpenSooqRemaining, OPEN_SOOQ_BRANCHES, openSooqModelIdentity, openSooqWeekId,
 } from "./opensooq";
 import type {
   OpenSooqAssignment, OpenSooqBranchId, OpenSooqBranchManagers, OpenSooqMonth,
@@ -120,11 +120,11 @@ export async function createOpenSooqPlan(monthKey: string, weekStart: string, ro
   const assignedRows = assignOpenSooqBranches(rows);
   const key = openSooqWeekId(monthKey, weekStart);
   if (new Set(assignedRows.map((row) => row.id)).size !== assignedRows.length) throw errorMessage("يوجد تكرار في وحدات الاستوك المختارة.");
-  const variantsPerDay = new Set<string>();
+  const modelsPerDay = new Set<string>();
   for (const row of assignedRows) {
-    const variant = `${row.scheduledDate}|${openSooqVariantIdentity(row)}`;
-    if (variantsPerDay.has(variant)) throw errorMessage("لا يمكن جدولة نفس السيارة والفئة والموديل أكثر من مرة في اليوم نفسه.");
-    variantsPerDay.add(variant);
+    const model = `${row.scheduledDate}|${openSooqModelIdentity(row)}`;
+    if (modelsPerDay.has(model)) throw errorMessage("لا يمكن تكرار نفس نوع السيارة والموديل في اليوم الواحد حتى لو اختلفت الفئة أو الفرع.");
+    modelsPerDay.add(model);
   }
   if (assignedRows.some((row) => !row.scheduledDate.startsWith(`${monthKey}-`) || row.scheduledDate < weekStart || row.scheduledDate > weekStartPlus5(weekStart))) {
     throw errorMessage("تواريخ الجدول لا تتوافق مع أسبوع النشر أو شهر الباقة.");
@@ -189,9 +189,9 @@ export async function replaceOpenSooqUnpublishedPlan(planId: string, expectedRow
     const usedUnitKeys: string[] = Array.isArray(monthSnap.data()?.usedUnitKeys) ? monthSnap.data()!.usedUnitKeys.map(String) : [];
     const usedElsewhere = new Set(usedUnitKeys.filter((id) => !toReplace.has(id)));
     const nextIds = new Set<string>();
-    const blockedVariants = new Set<string>();
-    const variant = (row: OpenSooqScheduleRow) => `${row.scheduledDate}|${openSooqVariantIdentity(row)}`;
-    for (const row of live) if (row.status === "published") blockedVariants.add(variant(row));
+    const blockedModels = new Set<string>();
+    const model = (row: OpenSooqScheduleRow) => `${row.scheduledDate}|${openSooqModelIdentity(row)}`;
+    for (const row of live) if (row.status === "published") blockedModels.add(model(row));
     const updated = live.map((old, index) => {
       if (old.status === "published") {
         if (proposedRows[index].id !== old.id) throw errorMessage("لا يمكن استبدال إعلان منشور.");
@@ -206,8 +206,8 @@ export async function replaceOpenSooqUnpublishedPlan(planId: string, expectedRow
         throw errorMessage("لا يمكن تغيير تاريخ الإعلان أو فرعه أو رقم التواصل عند تحديث السيارات.");
       }
       if (usedElsewhere.has(next.id) || nextIds.has(next.id)) throw errorMessage("السيارة البديلة محجوزة في جدول آخر.");
-      if (blockedVariants.has(variant(next))) throw errorMessage("يوجد تكرار لنفس السيارة والفئة والموديل في اليوم الواحد.");
-      blockedVariants.add(variant(next));
+      if (blockedModels.has(model(next))) throw errorMessage("يوجد تكرار لنفس نوع السيارة والموديل في اليوم الواحد حتى لو اختلفت الفئة أو الفرع.");
+      blockedModels.add(model(next));
       nextIds.add(next.id);
       return next;
     });
@@ -228,6 +228,52 @@ export async function replaceOpenSooqUnpublishedPlan(planId: string, expectedRow
     transaction.update(monthDoc, { usedUnitKeys: [
       ...usedUnitKeys.filter((id) => !toReplace.has(id)), ...updated.filter((row) => row.status !== "published").map((row) => row.id),
     ], updatedAt: serverTimestamp() });
+  });
+}
+
+/**
+ * Explicit admin-only cleanup for OLD saved schedules containing duplicate models.
+ * Removes only duplicate UNPUBLISHED rows; preserves published rows, dates, prices,
+ * branch assignments and all unrelated plans. Releases exactly the removed quota.
+ * Never auto-edits an old plan on load, and never touches Haraj collections.
+ */
+export async function removeOpenSooqDuplicateUnpublishedRows(planId: string): Promise<number> {
+  return runTransaction(db, async (transaction) => {
+    const ref = planRef(planId);
+    const planSnap = await transaction.get(ref);
+    if (!planSnap.exists()) throw errorMessage("الجدول لم يعد موجودًا.");
+    const plan = planSnap.data() as Omit<OpenSooqPlan, "id">;
+    const rows = assignOpenSooqBranches(Array.isArray(plan.rows) ? plan.rows : []);
+    const monthDoc = monthRef(plan.monthKey);
+    const monthSnap = await transaction.get(monthDoc);
+    if (!monthSnap.exists()) throw errorMessage("لم يتم العثور على باقة الشهر.");
+    const refs = rows.map((row) => assignmentRef(row.branchId!, planId, row.id));
+    const assignmentSnaps = await Promise.all(refs.map((item) => transaction.get(item)));
+    const live = rows.map((row, index) => {
+      const assignment = assignmentSnaps[index].exists() ? assignmentSnaps[index].data() as OpenSooqAssignment : null;
+      return { ...row, status: assignment?.status || row.status };
+    });
+    const { keepIndices, publishedConflictDays } = chooseOpenSooqUniqueModelRows(live);
+    if (publishedConflictDays.length) {
+      throw errorMessage(`هناك إعلانات منشورة مكررة لنفس نوع السيارة والموديل في أيام ${publishedConflictDays.join("، ")}؛ لا يمكن حذف إعلان منشور تلقائيًا.`);
+    }
+    const keep = new Set(keepIndices);
+    const removed = rows.map((row, index) => ({ row, index })).filter(({ index }) => !keep.has(index));
+    if (!removed.length) return 0;
+    const monthData = monthSnap.data() || {};
+    const reserved = num(monthData.reservedCount);
+    if (reserved < removed.length) throw errorMessage("رصيد الباقة غير متطابق؛ لن يتم تغيير الجدول.");
+    const removedIds = new Set(removed.map(({ row }) => row.id));
+    const used: string[] = Array.isArray(monthData.usedUnitKeys) ? monthData.usedUnitKeys.map(String) : [];
+    if (removed.some(({ row }) => !used.includes(row.id))) {
+      throw errorMessage("هويات السيارات المحجوزة غير متطابقة؛ لن يتم تغيير الجدول أو الرصيد.");
+    }
+    // All transaction reads are complete; apply the plan, manager tasks and quota atomically.
+    for (const { index } of removed) transaction.delete(refs[index]);
+    transaction.update(ref, { rows: rows.filter((_, index) => keep.has(index)), updatedAt: serverTimestamp() });
+    transaction.update(monthDoc, { reservedCount: reserved - removed.length,
+      usedUnitKeys: used.filter((id) => !removedIds.has(id)), updatedAt: serverTimestamp() });
+    return removed.length;
   });
 }
 

@@ -4,7 +4,7 @@ import { useAuth } from "../AuthContext";
 import { DailySchedule, dateText, downloadOpenSooqXlsx, formatLabel, numberText } from "../components/OpenSooqSchedule";
 import { EmptyState, PageTitle, StatCard } from "../components/Ui";
 import { changeOpenSooqRow, subscribeOpenSooqBranchRows } from "../opensooq-data";
-import { openSooqBranchName, openSooqMonthKey } from "../opensooq";
+import { findOpenSooqDuplicateModelDays, openSooqBranchName, openSooqMonthKey } from "../opensooq";
 import type { OpenSooqAssignment } from "../types";
 
 export function OpenSooqManagerPage() {
@@ -35,6 +35,7 @@ export function OpenSooqManagerPage() {
   const published = rows?.filter((row) => row.status === "published").length || 0;
   const pending = (rows?.length || 0) - published;
   const branchName = branchId ? openSooqBranchName(branchId) : "";
+  const duplicateDays = useMemo(() => findOpenSooqDuplicateModelDays(rows || []), [rows]);
 
   async function toggleStatus(row: OpenSooqAssignment) {
     if (!branchId || savingRow) return;
@@ -65,6 +66,7 @@ export function OpenSooqManagerPage() {
         onChange={(e) => /^\d{4}-(0[1-9]|1[0-2])$/.test(e.target.value) && setMonthKey(e.target.value)} /></label>} />
     {error ? <div className="alert error"><WarningCircle size={18} />{error}</div> : null}
     {notice ? <div className="alert success"><CheckCircle size={18} />{notice}</div> : null}
+    {duplicateDays.length ? <div className="alert warning"><WarningCircle size={18} />يوجد تكرار في إعلانات فرعك في أيام {duplicateDays.join("، ")}. لا تنشر الإعلانات المكررة؛ اطلب من مسؤول النظام تنظيف الجدول. وقد توجد تكرارات مع الفرع الآخر لا تظهر لك بسبب الصلاحيات.</div> : null}
     <section className="stats-grid opensooq-manager-stats">
       <StatCard label="إعلانات فرعي" value={rows ? numberText(rows.length) : "—"} hint={monthKey} />
       <StatCard label="تم نشرها" value={rows ? numberText(published) : "—"} hint="تم التأكيد من حسابك" tone="good" />
