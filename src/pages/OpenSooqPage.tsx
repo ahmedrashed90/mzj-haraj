@@ -1,19 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowClockwise, ArrowLeft, ArrowRight, CalendarBlank, CheckCircle, ClipboardText,
   DownloadSimple, FloppyDisk, GearSix, Phone, Plus, Storefront, Trash, WarningCircle,
 } from "@phosphor-icons/react";
 import { matchWebsiteCar } from "../ad-copy";
 import { useAppData } from "../AppDataContext";
+import { fetchOpenSooqErpStock } from "../data";
 import { ConfirmButton, EmptyState, PageTitle, StatCard } from "../components/Ui";
 import { DailySchedule, dateText, downloadOpenSooqXlsx, formatLabel, numberText } from "../components/OpenSooqSchedule";
 import { createOpenSooqManagerAuthUser } from "../firebase";
 import {
-  changeOpenSooqRow, createOpenSooqPlan, deleteOpenSooqPlan, ensureOpenSooqAssignments, saveOpenSooqConfiguration,
+  changeOpenSooqRow, createOpenSooqPlan, deleteOpenSooqPlan, ensureOpenSooqAssignments, replaceOpenSooqUnpublishedPlan, saveOpenSooqConfiguration,
   subscribeOpenSooqAdminAssignments, subscribeOpenSooqMonth, subscribeOpenSooqPlans, subscribeOpenSooqSettings,
 } from "../opensooq-data";
 import {
-  buildOpenSooqSchedule, getOpenSooqPlanDays, getOpenSooqRemaining, getOpenSooqPriceForStock,
+  buildOpenSooqSchedule, getOpenSooqPlanDays, getOpenSooqRemaining, getOpenSooqPriceForStock, rebuildOpenSooqUnpublishedRows,
   openSooqDateKey, openSooqMonthKey, openSooqSaturday, openSooqShiftDate,
   openSooqWeekId, OPEN_SOOQ_BRANCHES, mergeOpenSooqAssignments,
 } from "../opensooq";
@@ -24,8 +25,30 @@ import type {
 const defaultSettings: OpenSooqSettings = { accountName: "", phone: "", dailyTarget: 14,
   branchManagers: { showroom: { name: "", email: "" }, qadisiyah: { name: "", email: "" } } };
 export function OpenSooqPage() {
-  const { stock, stockTotalVehicles, stockLoading, stockError, refreshStock,
-    websiteCars, websiteCarsLoading, websiteCarsError, refreshWebsiteCars } = useAppData();
+  // NEXT ERP is the sole car source for OpenSooq. Haraj continues using MZJ Operations stock.
+  const { websiteCars, websiteCarsLoading, websiteCarsError, refreshWebsiteCars } = useAppData();
+  const [stock, setStock] = useState<StockGroup[]>([]);
+  const [stockTotalVehicles, setStockTotalVehicles] = useState(0);
+  const [stockExcludedUnmapped, setStockExcludedUnmapped] = useState(0);
+  const [stockLoading, setStockLoading] = useState(true);
+  const [stockError, setStockError] = useState("");
+  const refreshStock = useCallback(async () => {
+    setStockLoading(true);
+    setStockError("");
+    try {
+      const payload = await fetchOpenSooqErpStock();
+      setStock(payload.rows || []);
+      setStockTotalVehicles(payload.totalVehicles || 0);
+      setStockExcludedUnmapped(payload.excludedUnmapped || 0);
+    } catch (cause) {
+      // Never fall back to Operations or keep stale inventory when NEXT ERP fails.
+      setStock([]);
+      setStockTotalVehicles(0);
+      setStockExcludedUnmapped(0);
+      setStockError(cause instanceof Error ? cause.message : "تعذر قراءة سيارات NEXT ERP");
+    } finally { setStockLoading(false); }
+  }, []);
+  useEffect(() => { void refreshStock(); }, [refreshStock]);
   const todayKey = useMemo(() => openSooqDateKey(new Date()), []);
   const [monthKey, setMonthKey] = useState(() => openSooqMonthKey(new Date()));
   const [saturday, setSaturday] = useState(() => openSooqSaturday(todayKey));
@@ -113,7 +136,7 @@ export function OpenSooqPage() {
     qadisiyah: previewRows.filter((row) => row.branchId === "qadisiyah").length,
   };
   const monthConfigured = Boolean(month && settings && month.monthlyLimit > 0 && settings.accountName && settings.phone && settings.dailyTarget > 0);
-  const canCreate = monthConfigured && !configurationDirty && !stockLoading && !websiteCarsLoading
+  const canCreate = monthConfigured && !configurationDirty && !stockLoading && !stockError && !websiteCarsLoading
     && plans !== null && !savedThisWeek && remaining > 0 && previewRows.length > 0;
 
   function changeMonth(value: string) {
@@ -151,6 +174,31 @@ export function OpenSooqPage() {
     try { await deleteOpenSooqPlan(plan.id); setNotice(`تم حذف الجدول وإرجاع ${plan.rows.length} إعلانًا للرصيد المتبقي.`); }
     catch (e) { setError(e instanceof Error ? e.message : "تعذر حذف الجدول"); }
     finally { setBusy(""); }
+  }
+  async function rebuildSavedPlan(plan: OpenSooqPlan) {
+    if (busy || !month) return;
+    const pending = plan.rows.filter((row) => row.status !== "published").length;
+    if (!pending) return setError("لا توجد إعلانات غير منشورة في هذا الجدول.");
+    if (!window.confirm(`استبدال سيارات ${pending} إعلان غير منشور من NEXT ERP؟ سيتم الاحتفاظ بالمواعيد والفروع والأرقام والإعلانات المنشورة دون خصم جديد.`)) return;
+    setBusy(`rebuild:${plan.id}`); setError(""); setNotice("");
+    try {
+      // Fresh ERP read at the moment of replacement, not an old UI snapshot.
+      const payload = await fetchOpenSooqErpStock().catch((cause: unknown) => {
+        setStock([]); setStockTotalVehicles(0);
+        setStockError(cause instanceof Error ? cause.message : "تعذر قراءة سيارات NEXT ERP");
+        throw cause;
+      });
+      const currentStock = payload.rows || [];
+      const priced = currentStock.map((row) => ({ ...row,
+        price: getOpenSooqPriceForStock(row, websiteCars, matchWebsiteCar) }));
+      const proposed = rebuildOpenSooqUnpublishedRows(plan.rows, priced, month.usedUnitKeys);
+      await replaceOpenSooqUnpublishedPlan(plan.id, plan.rows, proposed);
+      setStock(currentStock); setStockTotalVehicles(payload.totalVehicles || 0);
+      setStockExcludedUnmapped(payload.excludedUnmapped || 0); setStockError("");
+      setNotice(`تم تحديث ${pending} إعلان غير منشور من NEXT ERP مع الحفاظ على توزيع الفروع والرصيد.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "تعذر تحديث سيارات الجدول من NEXT ERP");
+    } finally { setBusy(""); }
   }
   async function toggleStatus(plan: OpenSooqPlan, row: OpenSooqScheduleRow) {
     if (savingRow) return;
@@ -214,10 +262,10 @@ export function OpenSooqPage() {
 
   return <>
     <PageTitle title="السوق المفتوح" subtitle="إدارة رصيد الباقة وتجهيز جداول نشر يدوية أسبوعية. لا يحتاج ربطًا بالموقع أو نظام مناديب."
-      actions={<button className="secondary-button" disabled={stockLoading || websiteCarsLoading} onClick={() => void refreshData()}><ArrowClockwise size={18} />تحديث الاستوك والأسعار</button>} />
+      actions={<button className="secondary-button" disabled={stockLoading || websiteCarsLoading} onClick={() => void refreshData()}><ArrowClockwise size={18} />تحديث NEXT ERP والأسعار</button>} />
     {error ? <div className="alert error"><WarningCircle size={18} />{error}</div> : null}
     {notice ? <div className="alert success"><CheckCircle size={18} />{notice}</div> : null}
-    {stockError ? <div className="alert warning"><WarningCircle size={18} />تعذر قراءة الاستوك: {stockError}</div> : null}
+    {stockError ? <div className="alert warning"><WarningCircle size={18} />تعذر قراءة سيارات NEXT ERP: {stockError}</div> : null}
     {websiteCarsError ? <div className="alert warning"><WarningCircle size={18} />مصدر أسعار الموقع غير متاح: {websiteCarsError}. سيظهر السعر فارغًا للسيارات التي لا يمكن مطابقتها.</div> : null}
 
     <section className="panel opensooq-config">
@@ -233,7 +281,7 @@ export function OpenSooqPage() {
         <label>عدد الإعلانات لكل يوم نشر<input type="number" min="1" max="160" step="1" value={settingsForm.dailyTarget} onChange={(e) => setSettingsForm((p) => ({ ...p, dailyTarget: Number(e.target.value) }))} /></label>
         <div className="opensooq-form-submit"><button className="primary-button" disabled={Boolean(busy) || !month || !settings} onClick={() => void saveConfig()}><FloppyDisk size={18} />{busy === "settings" ? "جارٍ الحفظ..." : "حفظ إعدادات الحساب والباقة"}</button></div>
       </div>
-      <p className="opensooq-note">أدخل عدد الإعلانات النشطة الموجودة بالفعل على السوق المفتوح <strong>قبل جداول النظام</strong>. عند تأكيد نشر إعلان من الجداول يُضاف تلقائيًا إلى إجمالي النشط، وتنتقل حالته من «مجدول» إلى «منشور» دون خصم الرصيد للمرة الثانية. لا تضف تلك الإعلانات مرة ثانية في خانة العدد اليدوي حتى لا يحدث خصم مزدوج. عدّل الأرقام عند بداية كل شهر جديد. الاستوك يعيد عدد الوحدات لكل اسم/بيان/موديل بدون أرقام شاصي، ولذلك رقم «وحدة المخزون» في الجدول يميز عدد الوحدات فقط وليس هوية السيارة الفعلية.</p>
+      <p className="opensooq-note">أدخل عدد الإعلانات النشطة الموجودة بالفعل على السوق المفتوح <strong>قبل جداول النظام</strong>. عند تأكيد نشر إعلان من الجداول يُضاف تلقائيًا إلى إجمالي النشط، وتنتقل حالته من «مجدول» إلى «منشور» دون خصم الرصيد للمرة الثانية. لا تضف تلك الإعلانات مرة ثانية في خانة العدد اليدوي حتى لا يحدث خصم مزدوج. عدّل الأرقام عند بداية كل شهر جديد. سيارات السوق المفتوح تُقرأ مباشرة من NEXT ERP (Item + Serial No)، ويتم التأكد من حالة «متاحة للحجز» وActive، وتُحفظ هوية الوحدة بمعرّف غير كاشف لرقم الهيكل. لا يتم تكرار نفس النوع والفئة والموديل في يوم نشر واحد.</p>
     </section>
 
     <section className="panel opensooq-managers">
@@ -269,7 +317,7 @@ export function OpenSooqPage() {
 
     <section className="panel opensooq-plan-card">
       <div className="panel-head"><div><h2><CalendarBlank size={20} />تجهيز جدول نشر أسبوعي</h2>
-        <p>من السبت إلى الخميس، الجمعة مستبعدة، ولن يتجاوز الجدول رصيد الشهر أو كمية الاستوك المتاحة.</p></div>
+        <p>من السبت إلى الخميس، الجمعة مستبعدة. السيارات من NEXT ERP، وبحد أقصى إعلان واحد لكل نوع وفئة وموديل في اليوم.</p></div>
         <div className="week-switcher"><button className="icon-button" title="الأسبوع السابق" onClick={() => changeWeek(-1)}><ArrowRight size={19} /></button>
           <label><CalendarBlank size={18} /><input type="date" value={saturday} onChange={(e) => e.target.value && (setSaturday(openSooqSaturday(e.target.value)), setShowPreview(false))} /></label>
           <button className="icon-button" title="الأسبوع التالي" onClick={() => changeWeek(1)}><ArrowLeft size={19} /></button></div>
@@ -278,21 +326,22 @@ export function OpenSooqPage() {
         <div><span>الأسبوع المحدد</span><strong>{dateText(saturday)} – {dateText(openSooqShiftDate(saturday, 5))}</strong><small>الجدولة تبدأ من اليوم أو من بداية الأسبوع، أيهما أحدث</small></div>
         <div><span>أيام النشر المتاحة</span><strong>{planDays.length}</strong><small>بدون الجمعة أو الأيام الماضية</small></div>
         <div><span>المطلوب حسب الحد اليومي</span><strong>{candidateLimit}</strong><small>{settings?.dailyTarget || 14} إعلانًا يوميًا</small></div>
-        <div><span>يمكن جدولته الآن</span><strong>{previewRows.length}</strong><small>حسب الرصيد وكمية الاستوك</small></div>
+        <div><span>يمكن جدولته الآن</span><strong>{previewRows.length}</strong><small>حسب الرصيد وتنوع سيارات NEXT ERP</small></div>
       </div>
       <div className="opensooq-branch-summary"><span>توزيع معاينة الأسبوع:</span><strong>الصالة {previewByBranch.showroom} إعلان</strong><strong>القادسية {previewByBranch.qadisiyah} إعلان</strong></div>
       {configurationDirty ? <div className="alert warning"><WarningCircle size={17} />احفظ إعدادات حساب السوق المفتوح وباقة الشهر قبل تجهيز الجدول.</div> : null}
       {savedThisWeek ? <div className="alert success"><CheckCircle size={17} />جدول هذا الأسبوع محفوظ بالفعل، ويمكن فتحه من الجداول أسفل الصفحة. إنشاء معاينة أخرى لا يخصم شيئًا.</div> : null}
       {!planDays.length && !savedThisWeek ? <div className="alert info"><CalendarBlank size={17} />لا توجد أيام نشر متبقية في هذا الأسبوع ضمن الشهر المحدد. اختر الأسبوع التالي.</div> : null}
-      {monthConfigured && !savedThisWeek && planDays.length > 0 && availableSlots < Math.min(candidateLimit, remaining) && !stockLoading ?
-        <div className="alert warning"><WarningCircle size={17} />الكمية المتبقية من الاستوك ({availableSlots} سيارة) أقل من العدد المطلوب. الجدول لن ينشئ سيارات وهمية.</div> : null}
-      <div className="opensooq-plan-actions"><div className="opensooq-stock-hint"><Storefront size={18} />الاستوك: {numberText(stockTotalVehicles)} سيارة في {numberText(stock.length)} فئة، منها {numberText(availableSlots)} وحدة غير مجدولة في هذا الشهر.</div>
+      {monthConfigured && !savedThisWeek && planDays.length > 0 && previewRows.length < Math.min(candidateLimit, remaining) && !stockLoading && !stockError ?
+        <div className="alert warning"><WarningCircle size={17} />يمكن تجهيز {previewRows.length} إعلان فقط بدلًا من {Math.min(candidateLimit, remaining)}؛ عدد سيارات NEXT ERP المتاحة أو تنوع النوع/الفئة/الموديل غير كافٍ لملء كل الأيام دون تكرار في نفس اليوم. لن نضيف إعلانات مكررة أو وهمية.</div> : null}
+      {stockExcludedUnmapped > 0 ? <div className="alert warning"><WarningCircle size={17} />تم استبعاد {stockExcludedUnmapped} وحدة من NEXT ERP لأن بيانات النوع أو الفئة أو الموديل غير مكتملة في Item؛ لا تُستخدم بيانات تخمينية.</div> : null}
+      <div className="opensooq-plan-actions"><div className="opensooq-stock-hint"><Storefront size={18} />NEXT ERP: {numberText(stockTotalVehicles)} سيارة متاحة للحجز في {numberText(stock.length)} نوع/فئة/موديل، منها {numberText(availableSlots)} وحدة غير مجدولة في هذا الشهر.</div>
         <button className="primary-button" disabled={!canCreate || Boolean(busy)} onClick={() => setShowPreview(true)}><ClipboardText size={18} />معاينة الجدول الأسبوعي <b>{previewRows.length || ""}</b></button></div>
     </section>
 
     <section className="panel opensooq-saved">
       <header className="panel-head"><div><h2><ClipboardText size={20} />جداول السوق المفتوح المحفوظة</h2>
-        <p>الجداول السابقة تتقسم تلقائيًا بين المديرين بدون خصم جديد. يمكن تصفية الإعلانات حسب الفرع وتصدير جدوله وحده.</p></div>
+        <p>الجداول القديمة محفوظة. يمكن تحديث سيارات الإعلانات غير المنشورة من NEXT ERP دون تغيير رصيد الباقة أو الإعلانات المنشورة، مع تصدير جدول كل فرع.</p></div>
         <div className="opensooq-saved-buttons"><select className="inline-select" value={branchFilter}
           onChange={(e) => setBranchFilter(e.target.value as "all" | OpenSooqBranchId)}>
           <option value="all">جميع الفروع</option>{OPEN_SOOQ_BRANCHES.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
@@ -310,7 +359,11 @@ export function OpenSooqPage() {
             <summary><span><CalendarBlank size={20} />أسبوع {dateText(plan.planStart)} – {dateText(plan.planEnd)}</span>
               <span>{plan.rows.length} إعلان · {branchCounts} · {published} منشور</span></summary>
             <div className="opensooq-week-body"><div className="opensooq-saved-actions"><span>إعلانات الفرع المعروضة: <strong>{shownRows.length}</strong> من {plan.rows.length}</span>
-              <div className="opensooq-saved-buttons"><button className="secondary-button compact" disabled={!shownRows.length}
+              <div className="opensooq-saved-buttons">{plan.rows.some((row) => row.status !== "published") ?
+                <button className="secondary-button compact" disabled={Boolean(busy) || !month}
+                  onClick={() => void rebuildSavedPlan(plan)}><ArrowClockwise size={16} />
+                  {busy === `rebuild:${plan.id}` ? "جارٍ تحديث السيارات..." : "تحديث غير المنشور من NEXT ERP"}</button> : null}
+                <button className="secondary-button compact" disabled={!shownRows.length}
                 onClick={() => downloadOpenSooqXlsx(shownRows, plan.planStart, plan.planEnd, branchFilter === "all" ? undefined : branchFilter)}>
                 <DownloadSimple size={17} />تصدير Excel</button>
                 {published === 0 ? <ConfirmButton className="danger-button compact" confirmText={`حذف جدول هذا الأسبوع وإرجاع ${plan.rows.length} إعلانًا إلى رصيد الشهر؟`} onConfirm={() => removePlan(plan)}><Trash size={16} />حذف وإرجاع الرصيد</ConfirmButton> : null}</div>

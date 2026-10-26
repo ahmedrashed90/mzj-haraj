@@ -87,6 +87,8 @@ async function authenticatedGet<T>(url: string, fallback: string): Promise<T> {
   return payload as T;
 }
 export async function fetchStock(): Promise<StockResponse> { return authenticatedGet<StockResponse>("/api/stock", "تعذر قراءة مخزون السيارات"); }
+/** OpenSooq only: direct NEXT ERP stock, never the MZJ Operations/Haraj stock endpoint. */
+export async function fetchOpenSooqErpStock(): Promise<StockResponse> { return authenticatedGet<StockResponse>("/api/opensooq-erp-stock", "تعذر قراءة سيارات NEXT ERP"); }
 export async function fetchWebsiteCars(): Promise<WebsiteCarsResponse> { return authenticatedGet<WebsiteCarsResponse>("/api/website-cars", "تعذر قراءة مواصفات سيارات الموقع"); }
 
 export function normalizeHarajUrl(value: string) {

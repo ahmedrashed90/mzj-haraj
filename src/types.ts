@@ -127,6 +127,9 @@ export type StockGroup = {
   modelYear: string;
   statusName: string;
   quantity: number;
+  /** NEXT ERP only: stable, anonymized Serial No identities; never actual VIN values. */
+  unitKeys?: string[];
+  stockSource?: "next_erp";
 };
 
 export type StockResponse = {
@@ -135,6 +138,7 @@ export type StockResponse = {
   totalVehicles: number;
   totalGroups: number;
   excludedAgencyVehicles?: number;
+  excludedUnmapped?: number;
   fetchedAt: string;
   source: string;
   error?: string;
@@ -212,6 +216,7 @@ export type OpenSooqScheduleRow = {
   id: string;
   stockKey: string;
   unitIndex: number;
+  stockSource?: "next_erp";
   carName: string;
   statement: string;
   modelYear: string;

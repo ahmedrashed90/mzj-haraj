@@ -49,7 +49,7 @@ function ScheduleRowsTable({ rows, readOnly = false, showBranch = false, savingR
     <tbody>{rows.map((row, index) => <tr key={row.id}>
       <td>{index + 1}</td>
       {showBranch ? <td><span className="opensooq-branch-tag">{row.branchId ? openSooqBranchName(row.branchId) : "غير محدد"}</span></td> : null}
-      <td><strong>{row.carName}</strong>{row.unitIndex > 1 ? <small className="opensooq-variant-note">وحدة مخزون {row.unitIndex}</small> : null}</td>
+      <td><strong>{row.carName}</strong>{row.stockSource !== "next_erp" && row.unitIndex > 1 ? <small className="opensooq-variant-note">وحدة مخزون {row.unitIndex}</small> : null}</td>
       <td>{row.statement}</td><td>{row.modelYear}</td>
       <td><span className={row.price > 0 ? "opensooq-price" : "opensooq-missing-price"}>{priceText(row.price)}</span>
         {!readOnly ? <button className="opensooq-mini-link" onClick={() => onPrice?.(row)} disabled={Boolean(savingRow)} title="تعديل السعر لهذا الإعلان">تعديل</button> : null}</td>

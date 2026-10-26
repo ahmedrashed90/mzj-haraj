@@ -3,7 +3,7 @@ import {
 } from "firebase/firestore";
 import { ADMIN_EMAIL, db } from "./firebase";
 import {
-  assignOpenSooqBranches, getOpenSooqRemaining, OPEN_SOOQ_BRANCHES, openSooqWeekId,
+  assignOpenSooqBranches, getOpenSooqRemaining, OPEN_SOOQ_BRANCHES, openSooqVariantIdentity, openSooqWeekId,
 } from "./opensooq";
 import type {
   OpenSooqAssignment, OpenSooqBranchId, OpenSooqBranchManagers, OpenSooqMonth,
@@ -120,6 +120,12 @@ export async function createOpenSooqPlan(monthKey: string, weekStart: string, ro
   const assignedRows = assignOpenSooqBranches(rows);
   const key = openSooqWeekId(monthKey, weekStart);
   if (new Set(assignedRows.map((row) => row.id)).size !== assignedRows.length) throw errorMessage("يوجد تكرار في وحدات الاستوك المختارة.");
+  const variantsPerDay = new Set<string>();
+  for (const row of assignedRows) {
+    const variant = `${row.scheduledDate}|${openSooqVariantIdentity(row)}`;
+    if (variantsPerDay.has(variant)) throw errorMessage("لا يمكن جدولة نفس السيارة والفئة والموديل أكثر من مرة في اليوم نفسه.");
+    variantsPerDay.add(variant);
+  }
   if (assignedRows.some((row) => !row.scheduledDate.startsWith(`${monthKey}-`) || row.scheduledDate < weekStart || row.scheduledDate > weekStartPlus5(weekStart))) {
     throw errorMessage("تواريخ الجدول لا تتوافق مع أسبوع النشر أو شهر الباقة.");
   }
@@ -146,6 +152,83 @@ export async function createOpenSooqPlan(monthKey: string, weekStart: string, ro
       usedUnitKeys: [...usedUnitKeys, ...assignedRows.map((row) => row.id)], updatedAt: serverTimestamp() });
   });
   return key;
+}
+
+/**
+ * Replace only unpublished vehicle choices in one SAVED schedule using NEXT ERP.
+ * The month quota and reserved count never change. Published assignments are never touched.
+ * All updates happen in a single Firestore transaction, or none are applied.
+ */
+export async function replaceOpenSooqUnpublishedPlan(planId: string, expectedRows: OpenSooqScheduleRow[], proposedRows: OpenSooqScheduleRow[]) {
+  if (!expectedRows.length || expectedRows.length !== proposedRows.length) throw errorMessage("بيانات تحديث الجدول غير مكتملة.");
+  await runTransaction(db, async (transaction) => {
+    const ref = planRef(planId);
+    const planSnap = await transaction.get(ref);
+    if (!planSnap.exists()) throw errorMessage("الجدول لم يعد موجودًا.");
+    const plan = planSnap.data() as Omit<OpenSooqPlan, "id">;
+    const original = assignOpenSooqBranches(Array.isArray(plan.rows) ? plan.rows : []);
+    if (original.length !== expectedRows.length || original.some((row, index) => row.id !== expectedRows[index].id)) {
+      throw errorMessage("تغيرت بيانات الجدول. افتحه مجددًا قبل إعادة التجهيز.");
+    }
+    const monthDoc = monthRef(plan.monthKey);
+    const monthSnap = await transaction.get(monthDoc);
+    if (!monthSnap.exists()) throw errorMessage("لم يتم العثور على باقة شهر الجدول.");
+    const oldRefs = original.map((row) => assignmentRef(row.branchId!, planId, row.id));
+    const assignmentSnaps = await Promise.all(oldRefs.map((item) => transaction.get(item)));
+    const live = original.map((row, index) => {
+      const assignment = assignmentSnaps[index].exists() ? assignmentSnaps[index].data() as OpenSooqAssignment : null;
+      const publishedAt = assignment?.publishedAt || row.publishedAt;
+      return { ...row, status: assignment?.status || row.status, price: assignment?.price ?? row.price,
+        ...(publishedAt ? { publishedAt } : {}) };
+    });
+    if (live.some((row, index) => row.status !== expectedRows[index].status)) {
+      throw errorMessage("تغيرت حالة نشر أحد الإعلانات. حدّث الجدول أولًا حتى لا يتغير إعلان منشور.");
+    }
+    const toReplace = new Set(live.filter((row) => row.status !== "published").map((row) => row.id));
+    if (!toReplace.size) throw errorMessage("جميع إعلانات الجدول منشورة بالفعل، ولن يتم تغييرها.");
+    const usedUnitKeys: string[] = Array.isArray(monthSnap.data()?.usedUnitKeys) ? monthSnap.data()!.usedUnitKeys.map(String) : [];
+    const usedElsewhere = new Set(usedUnitKeys.filter((id) => !toReplace.has(id)));
+    const nextIds = new Set<string>();
+    const blockedVariants = new Set<string>();
+    const variant = (row: OpenSooqScheduleRow) => `${row.scheduledDate}|${openSooqVariantIdentity(row)}`;
+    for (const row of live) if (row.status === "published") blockedVariants.add(variant(row));
+    const updated = live.map((old, index) => {
+      if (old.status === "published") {
+        if (proposedRows[index].id !== old.id) throw errorMessage("لا يمكن استبدال إعلان منشور.");
+        return old;
+      }
+      const next = proposedRows[index];
+      if (next.stockSource !== "next_erp" || !next.id.startsWith("erp-") || !next.stockKey.startsWith("erp-")) {
+        throw errorMessage("يجب أن تكون السيارات البديلة من NEXT ERP فقط.");
+      }
+      if (next.scheduledDate !== old.scheduledDate || next.order !== old.order || next.branchId !== old.branchId
+        || next.phone !== old.phone || next.status !== "scheduled") {
+        throw errorMessage("لا يمكن تغيير تاريخ الإعلان أو فرعه أو رقم التواصل عند تحديث السيارات.");
+      }
+      if (usedElsewhere.has(next.id) || nextIds.has(next.id)) throw errorMessage("السيارة البديلة محجوزة في جدول آخر.");
+      if (blockedVariants.has(variant(next))) throw errorMessage("يوجد تكرار لنفس السيارة والفئة والموديل في اليوم الواحد.");
+      blockedVariants.add(variant(next));
+      nextIds.add(next.id);
+      return next;
+    });
+    // Reads are complete. Keep all published manager documents, and only replace unpublished ones.
+    // Delete only old IDs that are absent from the new schedule, then upsert replacements.
+    // This also supports repeating the refresh without delete/set conflicts for reused ERP IDs.
+    const newAssignmentPaths = new Set(updated.filter((row) => row.status !== "published")
+      .map((row) => assignmentRef(row.branchId!, planId, row.id).path));
+    live.forEach((row, index) => {
+      if (row.status !== "published" && !newAssignmentPaths.has(oldRefs[index].path)) transaction.delete(oldRefs[index]);
+    });
+    updated.forEach((row) => {
+      if (row.status === "published") return;
+      const assignment = toAssignment(row, plan.monthKey, planId, plan.weekStart);
+      transaction.set(assignmentRef(row.branchId!, planId, row.id), { ...assignment, updatedAt: serverTimestamp() });
+    });
+    transaction.update(ref, { rows: updated, updatedAt: serverTimestamp() });
+    transaction.update(monthDoc, { usedUnitKeys: [
+      ...usedUnitKeys.filter((id) => !toReplace.has(id)), ...updated.filter((row) => row.status !== "published").map((row) => row.id),
+    ], updatedAt: serverTimestamp() });
+  });
 }
 
 /** One-time, idempotent migration for saved v1.20 plans. No quota, date or status is changed. */

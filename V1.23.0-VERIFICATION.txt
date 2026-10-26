@@ -1,0 +1,20 @@
+MZJ Haraj Manager v1.23.0 - OpenSooq NEXT ERP Direct Stock
+
+Scope:
+- Only OpenSooq car source moved to NEXT ERP Item + Serial No.
+- Haraj stock and publishing logic untouched.
+- Prevent duplicate car/type/class/model within each publishing day.
+- Explicit, atomic replacement of unpublished saved rows; published rows, dates, branches, phone and reserved quota preserved.
+- Existing website price matching retained.
+
+Verification:
+- 27 node:test cases passed (including 8 identical units and 14/day 7+7).
+- TypeScript syntax transpilation for all 8 changed TypeScript/TSX files: passed.
+- Strict typecheck for pure scheduler, stock mapper and API route with @vercel/node test stub: passed.
+- Full npm run build: NOT RUN, npm registry DNS returned EAI_AGAIN; no installed dependencies.
+- Live NEXT ERP API connectivity: NOT TESTED, credentials are not present in this environment.
+
+Deployment prerequisites:
+- NEXT_ERP_URL, NEXT_API_KEY, NEXT_API_SECRET configured server-side in the Haraj Vercel project.
+- ERP API user needs read-only permissions to Item and Serial No.
+- Deploy full source; no Firestore schema/rules changes are required for this feature.
