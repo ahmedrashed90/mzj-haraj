@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { readNextErpStock } from "../server/opensooq-erp-stock";
+import { readNextErpStock } from "../server/opensooq-erp-stock.js";
 
 const FIREBASE_API_KEY = "AIzaSyCFJSPtJ7zUieFJLek89bRjwbpjx4RTH4Q";
 const ADMIN_EMAIL = "admin@mzj.com";

@@ -1,0 +1,24 @@
+MZJ Haraj Manager v1.24.1 - OpenSooq NEXT ERP Node ESM Runtime Import Fix
+
+Root cause confirmed from live Vercel production runtime logs on 2026-10-26:
+- GET /api/opensooq-erp-stock crashed at module load with ERR_MODULE_NOT_FOUND.
+- /var/task/api/opensooq-erp-stock.js imported extensionless /var/task/server/opensooq-erp-stock.
+- The function failed before verifying Firebase, reading environment variables, or contacting NEXT ERP.
+
+Minimal source fix:
+- api/opensooq-erp-stock.ts: use the explicit runtime ESM .js extension in the import of the TypeScript server module.
+- No modifications to server/opensooq-erp-stock.ts, original Haraj API, schedule logic, Firestore rules, or UI.
+- package.json version updated to 1.24.1; regression assertion added to the existing integration shape test.
+
+Verification (run on delivery):
+- Node test suite with TypeScript stripping.
+- Simulated Vercel TypeScript-to-JavaScript transpilation and Node ESM module-load smoke test.
+- Archive integrity and comparison against the v1.24.0 full source.
+
+Not verified:
+- Actual Vercel function packaging and live NEXT ERP request after redeploy; these require production deployment and an authorized admin session.
+
+Deploy:
+- Replace the complete repository source with this CLEAN FULL package and redeploy Production.
+- Keep NEXT_ERP_URL, NEXT_API_KEY, NEXT_API_SECRET as server-side Vercel variables; do not paste secrets in chat.
+- Test the OpenSooq refresh and inspect GET /api/opensooq-erp-stock logs.

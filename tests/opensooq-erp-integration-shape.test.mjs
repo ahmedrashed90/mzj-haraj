@@ -16,6 +16,8 @@ test('OpenSooq cars come only from the new server-side NEXT ERP endpoint; Haraj 
   assert.match(data, /fetchOpenSooqErpStock\(\).*"\/api\/opensooq-erp-stock"/);
   assert.match(harajStock, /resource", "vehicles"/);
   assert.match(erp, /readNextErpStock/);
+  assert.match(erp, /from [\'"]\.\.\/server\/opensooq-erp-stock\.js[\'"]/);
+  assert.doesNotMatch(erp, /from [\'"]\.\.\/server\/opensooq-erp-stock[\'"]/);
   assert.match(erpReader, /"Serial No"/);
   assert.match(erpReader, /"Item"/);
   assert.match(erpReader, /"متاحة للحجز"/);
